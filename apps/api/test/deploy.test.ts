@@ -39,6 +39,10 @@ describe("checkEnvironment", () => {
     );
     expect(resolvePublicUrl({ PUBLIC_URL: "https://forced.example.com", SERVICE_URL_APP_8787: "https://x.example.com" })).toBe("https://forced.example.com");
     expect(resolvePublicUrl({})).toBeNull();
+    // Coolify domain with the container port: served on 443 by the proxy.
+    expect(resolvePublicUrl({ SERVICE_URL_APP_8787: "https://stories.example.com:8787" })).toBe("https://stories.example.com");
+    expect(resolvePublicUrl({ SERVICE_FQDN_APP_8787: "stories.example.com:8787" })).toBe("https://stories.example.com");
+    expect(resolvePublicUrl({ PUBLIC_URL: "https://stories.example.com:8443" })).toBe("https://stories.example.com:8443");
     expect(checkEnvironment({ NODE_ENV: "production", SERVICE_URL_APP_8787: "https://stories.example.com" })).toEqual([]);
   });
 

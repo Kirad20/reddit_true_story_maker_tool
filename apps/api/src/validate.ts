@@ -10,14 +10,35 @@ const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
  * Read directly instead of only through compose interpolation, which Coolify does not always resolve.
  */
 export function resolvePublicUrl(env: NodeJS.ProcessEnv): string | null {
-  const candidates = [env.PUBLIC_URL, env.BETTER_AUTH_URL, env.SERVICE_URL_APP_8787, env.SERVICE_URL_APP, env.SERVICE_FQDN_APP_8787, env.SERVICE_FQDN_APP];
-  for (const raw of candidates) {
+  const candidates: [string | undefined, boolean][] = [
+    [env.PUBLIC_URL, false],
+    [env.BETTER_AUTH_URL, false],
+    [env.SERVICE_URL_APP_8787, true],
+    [env.SERVICE_URL_APP, true],
+    [env.SERVICE_FQDN_APP_8787, true],
+    [env.SERVICE_FQDN_APP, true],
+  ];
+  const containerPort = String(env.API_PORT || 8787);
+  for (const [raw, fromCoolify] of candidates) {
     // Coolify may hold several comma-separated domains; the first one is the primary.
     const value = raw?.split(",")[0]?.trim();
     // Skip compose placeholders that were left unresolved, like "${SERVICE_URL_APP_8787}".
     if (!value || value.includes("$")) continue;
-    const url = /^https?:\/\//i.test(value) ? value : `https://${value}`;
-    return url.replace(/\/+$/, "");
+    let url = (/^https?:\/\//i.test(value) ? value : `https://${value}`).replace(/\/+$/, "");
+    // A Coolify domain like "https://app.example.com:8787" means "route to container port 8787": the proxy
+    // serves it on 443, so the port must not end up in public links or OAuth redirect URIs.
+    if (fromCoolify) {
+      try {
+        const parsed = new URL(url);
+        if (parsed.port === containerPort) {
+          parsed.port = "";
+          url = parsed.toString().replace(/\/+$/, "");
+        }
+      } catch {
+        // checkEnvironment reports invalid URLs.
+      }
+    }
+    return url;
   }
   return null;
 }
