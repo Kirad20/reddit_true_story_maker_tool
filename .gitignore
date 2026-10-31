@@ -1,0 +1,17 @@
+.claude/
+*.log
+node_modules/
+dist/
+build/
+.env
+jobs/
+data/
+services/tts/.venv/
+services/tts/models/
+__pycache__/
+.pytest_cache/
+assets/backgrounds/**/*.mp4
+assets/backgrounds/**/*.webm
+assets/backgrounds/**/*.mov
+assets/music/**/*.mp3
+assets/music/**/*.wav

@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Typecheck, tests and web build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - name: Unit tests (video + api)
+        run: npm test -w @tsm/video -w @tsm/api
+      - run: npm run build -w @tsm/web
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.1"
+      - name: Voice service tests
+        working-directory: services/tts
+        run: |
+          uv sync --frozen
+          uv run pytest -q
+
+  containers:
+    name: Build containers and smoke-test the stack
+    needs: checks
+    runs-on: ubuntu-latest
+    env:
+      APP_PASSWORD: ci-smoke-password-123
+      COMPOSE: docker compose -f docker-compose.yml -f docker-compose.local.yml
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate compose (Coolify file)
+        run: $COMPOSE config --quiet
+
+      - name: Compose refuses to deploy without APP_PASSWORD
+        run: |
+          if APP_PASSWORD= docker compose -f docker-compose.yml config --quiet 2>/dev/null; then
+            echo "docker-compose.yml accepted an empty APP_PASSWORD"; exit 1
+          fi
+
+      - name: Build images
+        run: $COMPOSE build
+
+      - name: Start stack
+        run: $COMPOSE up -d --wait --wait-timeout 300
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          base=http://localhost:8787
+          curl -fsS "$base/api/health"
+          # Everything except /api/health requires the password.
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$base/api/options")" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' -u admin:wrong "$base/api/options")" = 401
+          curl -fsS -u "admin:$APP_PASSWORD" "$base/api/ready" | tee /dev/stderr | grep -q '"ready":true'
+          curl -fsS -u "admin:$APP_PASSWORD" "$base/" | grep -q '<div id="root">'
+          curl -fsS -u "admin:$APP_PASSWORD" "$base/api/options" | grep -q '"voices":\["'
+
+      - name: Render a video end to end
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          base=http://localhost:8787
+          auth="admin:$APP_PASSWORD"
+          job=$(curl -fsS -u "$auth" -H 'Content-Type: application/json' "$base/api/jobs" \
+            -d '{"source":{"type":"text","title":"CI smoke test","body":"This is a short story to check that voice and rendering work inside the containers."},"maxDurationSec":20}' \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+          echo "job $job"
+          for i in $(seq 1 60); do
+            status=$(curl -fsS -u "$auth" "$base/api/jobs/$job" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')
+            echo "status $status"
+            [ "$status" = ready ] && break
+            [ "$status" = failed ] && { curl -fsS -u "$auth" "$base/api/jobs/$job"; exit 1; }
+            sleep 5
+          done
+          curl -fsS -u "$auth" -X POST "$base/api/jobs/$job/render" > /dev/null
+          for i in $(seq 1 90); do
+            status=$(curl -fsS -u "$auth" "$base/api/jobs/$job" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')
+            echo "status $status"
+            [ "$status" = done ] && break
+            [ "$status" = failed ] && { curl -fsS -u "$auth" "$base/api/jobs/$job"; exit 1; }
+            sleep 5
+          done
+          test "$status" = done
+          curl -fsS -u "$auth" -o final.mp4 "$base/media/jobs/$job/final.mp4"
+          test "$(stat -c %s final.mp4)" -gt 100000
+
+      - name: Logs on failure
+        if: failure()
+        run: $COMPOSE logs --no-color --tail 200
+
+      - name: Stop stack
+        if: always()
+        run: $COMPOSE down -v

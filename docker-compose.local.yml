@@ -1,0 +1,7 @@
+# Local override: publish the app on http://localhost:8787 (Coolify does not use this file).
+services:
+  app:
+    ports:
+      - "8787:8787"
+    environment:
+      - PUBLIC_URL=${PUBLIC_URL:-http://localhost:8787}

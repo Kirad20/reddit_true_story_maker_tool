@@ -1,0 +1,35 @@
+[
+  {
+    "kind": "Listing",
+    "data": {
+      "children": [
+        {
+          "kind": "t3",
+          "data": {
+            "subreddit": "lifehacks",
+            "author": "coffee_fan",
+            "title": "TIL coffee grounds are a natural deodorizer",
+            "selftext": "Put a tablespoon in a little cup and set it out in your **bedroom** or [kitchen](https://example.com). The funky smells disappear.\n\nEdit: thanks for the gold!",
+            "score": 12400,
+            "num_comments": 845,
+            "over_18": false,
+            "permalink": "/r/lifehacks/comments/1bekvtl/coffee_is_a_natural_deodorizer/"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "kind": "Listing",
+    "data": {
+      "children": [
+        { "kind": "t1", "data": { "author": "AutoModerator", "body": "Rule reminder", "score": 1, "stickied": true } },
+        { "kind": "t1", "data": { "author": "roach_watch", "body": "Know who loves coffee grounds? Cockroaches.", "score": 900 } },
+        { "kind": "t1", "data": { "author": "someone", "body": "[deleted]", "score": 2000 } },
+        { "kind": "t1", "data": { "author": "baker", "body": "Baking soda works too, IMO even better.", "score": 450 } },
+        { "kind": "t1", "data": { "author": "low", "body": "nice", "score": 3 } },
+        { "kind": "more", "data": { "count": 120 } }
+      ]
+    }
+  }
+]

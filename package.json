@@ -1,0 +1,22 @@
+{
+  "name": "truestorymaker",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n tts,api,web -c magenta,cyan,green \"npm run tts\" \"npm run dev -w @tsm/api\" \"npm run dev -w @tsm/web\"",
+    "tts": "uv run --directory services/tts uvicorn main:app --port 8766",
+    "setup:tts": "uv sync --directory services/tts && uv run --directory services/tts python download_models.py",
+    "studio": "npm run studio -w @tsm/video",
+    "test": "npm test --workspaces --if-present && uv run --directory services/tts pytest -q",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "smoke": "npm run smoke -w @tsm/api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "typescript": "^5.6.0"
+  }
+}

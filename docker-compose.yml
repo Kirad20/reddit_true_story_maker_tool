@@ -1,0 +1,54 @@
+# Production stack for Coolify (Build strategy: Docker Compose, file: docker-compose.yml).
+# Coolify assigns the domain to the "app" service on port 8787 and fills SERVICE_URL_APP_8787.
+# Local run: docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/app.Dockerfile
+    restart: unless-stopped
+    environment:
+      - SERVICE_URL_APP_8787
+      - PUBLIC_URL=${PUBLIC_URL:-${SERVICE_URL_APP_8787}}
+      - APP_USER=${APP_USER:-admin}
+      - APP_PASSWORD=${APP_PASSWORD:?Set APP_PASSWORD (12+ characters) to protect the app}
+      - NODE_ENV=production
+      - API_PORT=8787
+      - TTS_URL=http://tts:8766
+    volumes:
+      - app-data:/app/data
+      - app-jobs:/app/jobs
+      - app-assets:/app/assets
+    # Chrome (Remotion renderer) needs more shared memory than Docker's 64 MB default.
+    shm_size: 1gb
+    depends_on:
+      tts:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8787/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+  tts:
+    build:
+      context: services/tts
+    restart: unless-stopped
+    environment:
+      - TTS_OUTPUT_ROOT=/app/jobs
+    volumes:
+      # Same path as in "app": the voice service writes voice.wav into the job folder.
+      - app-jobs:/app/jobs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8766/health', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  app-data:
+  app-jobs:
+  app-assets:

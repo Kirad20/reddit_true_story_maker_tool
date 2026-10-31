@@ -1,0 +1,34 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+
+export const ROOT_DIR = path.resolve(here, "../../..");
+export const JOBS_DIR = path.join(ROOT_DIR, "jobs");
+/** Settings, secrets and pipeline state. Tests point TSM_DATA_DIR at a temp folder. */
+export const DATA_DIR = process.env.TSM_DATA_DIR ?? path.join(ROOT_DIR, "data");
+export const ASSETS_DIR = path.join(ROOT_DIR, "assets");
+export const BACKGROUNDS_DIR = path.join(ASSETS_DIR, "backgrounds");
+export const MUSIC_DIR = path.join(ASSETS_DIR, "music");
+export const VIDEO_ENTRY = path.join(ROOT_DIR, "packages/video/src/index.ts");
+
+export const IS_PRODUCTION = process.env.NODE_ENV === "production";
+export const API_PORT = Number(process.env.API_PORT ?? 8787);
+/** Origin the renderer uses to download job media from this server (always local). */
+export const API_ORIGIN = process.env.API_ORIGIN ?? `http://localhost:${API_PORT}`;
+/** Public URL of the deployment (e.g. Coolify domain). OAuth redirects are built on it. */
+export const PUBLIC_URL = (process.env.PUBLIC_URL || "").replace(/\/+$/, "") || null;
+/** Base for OAuth redirect URIs: the public URL in production, the API itself in development. */
+export const OAUTH_BASE = PUBLIC_URL ?? API_ORIGIN;
+/** Where the browser UI lives (OAuth callbacks send the user back here). */
+export const WEB_ORIGIN = process.env.WEB_ORIGIN ?? PUBLIC_URL ?? "http://localhost:5173";
+export const TTS_URL = process.env.TTS_URL ?? "http://127.0.0.1:8766";
+/** Built web app served by the API in production (apps/web/dist). */
+export const WEB_DIST = process.env.WEB_DIST ?? path.join(ROOT_DIR, "apps/web/dist");
+/** Basic-auth credentials protecting the whole app; required in production. */
+export const APP_USER = process.env.APP_USER || "admin";
+export const APP_PASSWORD = process.env.APP_PASSWORD || "";
+
+// Model providers, per-agent models and service credentials live in Settings (see aiconfig.ts).
+
+export const DEFAULT_VOICES: Record<"en" | "es", string> = { en: "af_heart", es: "ef_dora" };
