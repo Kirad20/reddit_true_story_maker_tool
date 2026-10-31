@@ -1,5 +1,6 @@
 // Client for the third-party Reddit data provider at api.redditapis.com (the user's own paid account).
 // Docs: https://docs.redditapis.com/docs
+import type { Timeframe } from "./domain";
 import type { ListingPost, RedditComment, RedditPost } from "./reddit";
 
 import { secret } from "./aiconfig";
@@ -85,7 +86,7 @@ export async function providerPost(id: string, maxComments: number): Promise<Red
   return normalizePost(data.post, normalizeComments(data.comments ?? [], maxComments));
 }
 
-export async function providerSubTop(subreddit: string, timeframe: "day" | "week", limit: number): Promise<ListingPost[]> {
+export async function providerSubTop(subreddit: string, timeframe: Timeframe, limit: number): Promise<ListingPost[]> {
   const name = subreddit.replace(/^r\//i, "").replace(/[^\w]/g, "");
   const data = await get<{ posts?: ProviderPost[] }>(
     `/api/reddit/sub/${name}/top?t=${timeframe}&limit=${Math.min(Math.max(limit, 1), 100)}`,

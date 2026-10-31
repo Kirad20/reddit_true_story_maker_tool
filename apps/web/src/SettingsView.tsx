@@ -1,9 +1,24 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { authClient } from "./auth";
 import { CAPTION_LABELS } from "./CreateForm";
 import { CredentialsSettings, ModelsSettings } from "./ModelsSettings";
 import { voiceLabel } from "./VoiceField";
-import { PLATFORMS, PLATFORM_LABEL, pipelineApi, type AccountStatus, type Genre, type Options, type Pipeline, type Platform, type Settings } from "./api";
+import { PLATFORMS, PLATFORM_LABEL, pipelineApi, type AccountStatus, type Genre, type Options, type Pipeline, type Platform, type Settings, type Timeframe } from "./api";
+
+const TIMEFRAMES: { id: Timeframe; label: string }[] = [
+  { id: "hour", label: "Última hora" },
+  { id: "day", label: "Hoy" },
+  { id: "week", label: "Esta semana" },
+  { id: "month", label: "Este mes" },
+  { id: "year", label: "Este año" },
+  { id: "all", label: "Todos los tiempos" },
+];
+
+const parseSubreddits = (text: string) =>
+  text
+    .split(/[,\s]+/)
+    .map((x) => x.trim().replace(/^\/?r\//i, ""))
+    .filter(Boolean);
 
 const GENRES: { id: Genre; label: string }[] = [
   { id: "aita", label: "¿Soy el malo? (AITA)" },
@@ -105,20 +120,34 @@ export function SettingsView({ pipeline, options, refresh }: { pipeline: Pipelin
     : params.get("authError");
   const connected = params.get("connected");
 
-  useEffect(() => setS(pipeline.settings), [pipeline.settings]);
+  // The pipeline snapshot is refetched on every server event: only take it while there are no
+  // unsaved edits, otherwise a background refresh would wipe what the user is typing.
+  const dirty = useRef(false);
+  const [subredditsText, setSubredditsText] = useState(pipeline.settings.sources.reddit.subreddits.join(", "));
+  useEffect(() => {
+    if (dirty.current) return;
+    setS(pipeline.settings);
+    setSubredditsText(pipeline.settings.sources.reddit.subreddits.join(", "));
+  }, [pipeline.settings]);
 
-  const set = (fn: (draft: Settings) => void) =>
+  const set = (fn: (draft: Settings) => void) => {
+    dirty.current = true;
+    setMessage(null);
     setS((prev) => {
       const next = structuredClone(prev);
       fn(next);
       return next;
     });
+  };
 
   async function save() {
     setSaving(true);
     setMessage(null);
     try {
-      await pipelineApi.saveSettings(s);
+      const saved = await pipelineApi.saveSettings(s);
+      dirty.current = false;
+      setS(saved);
+      setSubredditsText(saved.sources.reddit.subreddits.join(", "));
       setMessage("Ajustes guardados");
       refresh();
     } catch (e) {
@@ -151,6 +180,12 @@ export function SettingsView({ pipeline, options, refresh }: { pipeline: Pipelin
           URI que aparece ahí y pulsa Conectar. La cuenta queda vinculada a tu usuario (Better Auth) y el pipeline publica con ella. Ver
           README.
         </p>
+        {pipeline.accounts.some((a) => /\/\/(localhost|127\.0\.0\.1)[:/]/.test(a.redirectUri)) && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname) && (
+          <p className="warn small">
+            El servidor no conoce su dominio público, por eso el redirect URI apunta a localhost. En Coolify asigna el dominio al
+            servicio <code>app</code> (puerto 8787) o define <code>PUBLIC_URL={location.origin}</code> y vuelve a desplegar.
+          </p>
+        )}
         <Accounts pipeline={pipeline} refresh={refresh} />
       </section>
 
@@ -225,8 +260,14 @@ export function SettingsView({ pipeline, options, refresh }: { pipeline: Pipelin
           <label className="field">
             <span>Subreddits (separados por coma)</span>
             <input
-              value={s.sources.reddit.subreddits.join(", ")}
-              onChange={(e) => set((d) => void (d.sources.reddit.subreddits = e.target.value.split(",").map((x) => x.trim()).filter(Boolean)))}
+              placeholder="AmItheAsshole, tifu, pettyrevenge"
+              value={subredditsText}
+              onChange={(e) => {
+                setSubredditsText(e.target.value);
+                const list = parseSubreddits(e.target.value);
+                set((d) => void (d.sources.reddit.subreddits = list));
+              }}
+              onBlur={() => setSubredditsText(s.sources.reddit.subreddits.join(", "))}
             />
           </label>
           <label className="field">
@@ -235,9 +276,12 @@ export function SettingsView({ pipeline, options, refresh }: { pipeline: Pipelin
           </label>
           <label className="field">
             <span>Periodo</span>
-            <select value={s.sources.reddit.timeframe} onChange={(e) => set((d) => void (d.sources.reddit.timeframe = e.target.value as "day" | "week"))}>
-              <option value="day">Hoy</option>
-              <option value="week">Semana</option>
+            <select value={s.sources.reddit.timeframe} onChange={(e) => set((d) => void (d.sources.reddit.timeframe = e.target.value as Timeframe))}>
+              {TIMEFRAMES.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
             </select>
           </label>
         </div>
@@ -434,6 +478,7 @@ export function SettingsView({ pipeline, options, refresh }: { pipeline: Pipelin
 
       <div className="save-bar">
         {message && <span className="note">{message}</span>}
+        {!message && dirty.current && <span className="warn small">Cambios sin guardar: pulsa Guardar antes de buscar historias.</span>}
         <button className="primary" disabled={saving} onClick={save}>
           {saving ? "Guardando…" : "Guardar ajustes"}
         </button>

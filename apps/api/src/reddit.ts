@@ -1,3 +1,4 @@
+import type { Timeframe } from "./domain";
 import { secret } from "./aiconfig";
 import { hasProvider, postIdFrom, providerPost, providerSubTop } from "./redditapis";
 
@@ -99,7 +100,7 @@ export type ListingPost = { permalink: string; title: string; score: number; nsf
 export const hasRedditAccess = () => hasProvider() || hasOAuth();
 
 /** Top posts of a subreddit through the data provider or the official API. */
-export async function fetchSubredditTop(subreddit: string, timeframe: "day" | "week", limit: number): Promise<ListingPost[]> {
+export async function fetchSubredditTop(subreddit: string, timeframe: Timeframe, limit: number): Promise<ListingPost[]> {
   if (hasProvider()) return providerSubTop(subreddit, timeframe, limit);
   if (!hasOAuth()) throw new RedditError("The Reddit source needs a redditapis.com key or approved Reddit API credentials (Settings → Credenciales)");
   const name = subreddit.replace(/^r\//i, "").replace(/[^\w]/g, "");

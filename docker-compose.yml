@@ -9,8 +9,10 @@ services:
       dockerfile: docker/app.Dockerfile
     restart: unless-stopped
     environment:
+      # Coolify fills these with the domain assigned to "app"; the API uses them when PUBLIC_URL is empty.
       - SERVICE_URL_APP_8787
-      - PUBLIC_URL=${PUBLIC_URL:-${SERVICE_URL_APP_8787}}
+      - SERVICE_FQDN_APP_8787
+      - PUBLIC_URL=${PUBLIC_URL:-}
       # Login (Better Auth). Optional: without them a signing secret is generated in app-data and the
       # temporary setup user gets a random password printed in the logs.
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-}
