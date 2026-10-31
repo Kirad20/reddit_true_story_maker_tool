@@ -8,29 +8,14 @@ Material for the TikTok for Developers review form. Products and scopes this app
 | Login Kit | `user.info.basic` | Connect the creator's account and show its name and avatar |
 | Content Posting API (Direct Post) | `video.publish` | Publish the video the user approved to their TikTok |
 
-## "Explain how each product and scope works" (paste into the form)
+## "Explain how each product and scope works" (paste into the form, max 1000 characters)
 
 ```text
-TrueStoryMaker is a web app (the URL in this submission) that turns short text stories into vertical videos
-with an AI voice and word-by-word captions. Users can publish a finished video to their own TikTok account.
-Access is private: users sign in with an account created by the administrator.
+TrueStoryMaker (the web app at this URL) turns text stories into vertical videos with AI voice and captions, and lets users publish them to their own TikTok account.
 
-Login Kit — user.info.basic
-In Settings > Publishing accounts the user clicks "Connect" on the TikTok card. We redirect to TikTok's
-authorization page (Login Kit, OAuth 2.0 with our registered redirect URI). After the user authorizes, we read
-open_id, display_name and avatar_url with /v2/user/info/ to show which TikTok account is connected ("Connected
-as <display name>"). The access and refresh tokens are stored on our server only and are never sent to the
-browser. The user can click "Disconnect" at any time, which deletes the stored tokens.
+Login Kit (user.info.basic): in Settings > Publishing accounts the user clicks Connect on TikTok and authorizes via OAuth. We read open_id, display_name and avatar_url to show which account is connected. Tokens stay on our server; Disconnect deletes them.
 
-Content Posting API (Direct Post) — video.publish
-In the Publications tab the user reviews each generated video before it is posted: they watch the preview,
-edit the caption, and approve it. Only approved videos are published. Before every post we call
-/v2/post/publish/creator_info/query/ to get the creator's allowed privacy levels and settings, then call
-/v2/post/publish/video/init/ with the chosen privacy level, the caption and is_aigc=true (every video is
-labeled as AI-generated content), upload the MP4 to the returned upload_url, and poll
-/v2/post/publish/status/fetch/ to show the result ("Published" with a link, or the error) in the app.
-We do not read the user's existing videos, followers, messages or any other TikTok data, and we never post
-anything the user has not approved.
+Content Posting API (video.publish): in Publications the user previews the video, edits the caption and approves it. Before each post we query creator_info for the allowed privacy levels, call video/init with the chosen privacy and is_aigc=true (AI-generated label), upload the MP4 and poll status/fetch to show the result in the app. Only approved videos are posted. We read no other TikTok data.
 ```
 
 ## Demo video script (sandbox)
