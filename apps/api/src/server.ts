@@ -12,9 +12,11 @@ import {
   DATA_DIR,
   DEFAULT_VOICES,
   JOBS_DIR,
+  PUBLIC_URL,
   TTS_URL,
   WEB_DIST,
 } from "./config";
+import { LEGAL_ROUTES, legalOptionsFromEnv, renderLegalPage } from "./legal";
 import { securityHeaders } from "./security";
 import { checkEnvironment, checkWritable, reportOrExit } from "./validate";
 import { listProviderModels } from "./llm";
@@ -105,6 +107,16 @@ app.use((req, res, next) => {
   // Model calls triggered by this request are tagged with what started them.
   withTrace({ trigger: `${req.method} ${req.path}` }, async () => next());
 });
+
+// Public legal pages (no login): Terms of Service and Privacy Policy, required by YouTube, TikTok and Meta.
+const legalOptions = legalOptionsFromEnv(process.env, PUBLIC_URL);
+for (const [route, page] of Object.entries(LEGAL_ROUTES)) {
+  const html = renderLegalPage(page, legalOptions);
+  app.get([route, `${route}.html`], (_req, res) => {
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.type("html").send(html);
+  });
+}
 
 app.get("/api/me", (_req, res) => {
   res.json(res.locals.user);

@@ -10,6 +10,8 @@ export default defineConfig({
     proxy: {
       "/api": { target: api, changeOrigin: true },
       "/media": { target: api, changeOrigin: true },
+      // Public legal pages are rendered by the API.
+      "^/(terms|terminos|privacy|privacidad)(\\.html)?$": { target: api, changeOrigin: true },
     },
   },
 });

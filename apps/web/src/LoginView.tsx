@@ -40,6 +40,9 @@ export function LoginView({ onSignedIn }: { onSignedIn: () => void }) {
           ¿Primera vez? Entra con el usuario temporal que aparece en los logs del servidor (<code>[auth] TEMPORARY SETUP USER</code>) y crea
           tu cuenta de administrador en <b>Usuarios</b>. El usuario temporal se borra en cuanto lo haces.
         </p>
+        <p className="legal-links small muted">
+          <a href="/terms">Términos del servicio</a> · <a href="/privacy">Política de privacidad</a>
+        </p>
       </form>
     </div>
   );

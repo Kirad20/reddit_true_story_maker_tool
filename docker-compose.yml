@@ -21,6 +21,9 @@ services:
       - SETUP_EMAIL=${SETUP_EMAIL:-}
       - SETUP_PASSWORD=${SETUP_PASSWORD:-}
       - TRUSTED_ORIGINS=${TRUSTED_ORIGINS:-}
+      # Shown on the public /terms and /privacy pages.
+      - LEGAL_OPERATOR=${LEGAL_OPERATOR:-}
+      - LEGAL_CONTACT_EMAIL=${LEGAL_CONTACT_EMAIL:-}
       # Backgrounds and music in an S3-compatible bucket (SeaweedFS, MinIO, AWS). Empty S3_BUCKET = app-assets volume.
       - S3_ENDPOINT=${S3_ENDPOINT:-}
       - S3_BUCKET=${S3_BUCKET:-}
