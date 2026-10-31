@@ -15,7 +15,9 @@ services:
       - PUBLIC_URL=${PUBLIC_URL:-}
       # Login (Better Auth). Optional: without them a signing secret is generated in app-data and the
       # temporary setup user gets a random password printed in the logs.
-      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-}
+      # Coolify generates SERVICE_BASE64_64_AUTH (64 random chars) on the first deploy and keeps it; you can see or
+      # edit it under Environment Variables. Outside Coolify it is empty and the API generates one in app-data.
+      - BETTER_AUTH_SECRET=${SERVICE_BASE64_64_AUTH:-}
       - SETUP_EMAIL=${SETUP_EMAIL:-}
       - SETUP_PASSWORD=${SETUP_PASSWORD:-}
       - TRUSTED_ORIGINS=${TRUSTED_ORIGINS:-}

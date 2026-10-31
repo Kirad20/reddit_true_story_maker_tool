@@ -27,7 +27,7 @@ export function checkEnvironment(env: NodeJS.ProcessEnv): EnvCheck[] {
   const problems: EnvCheck[] = [];
   const production = env.NODE_ENV === "production";
 
-  if (env.BETTER_AUTH_SECRET && env.BETTER_AUTH_SECRET.length < 32) {
+  if (env.BETTER_AUTH_SECRET && !env.BETTER_AUTH_SECRET.includes("$") && env.BETTER_AUTH_SECRET.length < 32) {
     problems.push({ level: production ? "error" : "warn", message: "BETTER_AUTH_SECRET must be at least 32 characters (or leave it empty to generate one in data/)" });
   }
   if (env.SETUP_PASSWORD && env.SETUP_PASSWORD.length < 12) {
