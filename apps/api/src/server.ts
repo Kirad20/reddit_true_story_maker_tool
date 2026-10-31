@@ -27,6 +27,7 @@ import {
   loadJobs,
   patchComposition,
   publicJob,
+  redoJob,
   retryJob,
   startRender,
 } from "./jobs";
@@ -42,6 +43,7 @@ import {
   produceStory,
   publishNow,
   queuePublications,
+  redoStory,
   restartScheduler,
   runCycle,
   startAutomation,
@@ -58,10 +60,14 @@ import {
   manualStoryInput,
   providersInput,
   publicationEdit,
+  redoInput,
   settingsSchema,
 } from "./schema";
 import { manualStory } from "./sources";
 import { listVoices, previewVoice } from "./tts";
+import type { SessionUser } from "./auth";
+import { getLlmCall, jobTrace, loadTelemetry, recordAudit, telemetryEvents, telemetrySummary, withTrace } from "./telemetry";
+import { AGENT_FLOW } from "./architecture";
 
 reportOrExit([...checkEnvironment(process.env), ...(await checkWritable([DATA_DIR, JOBS_DIR, ASSETS_DIR]))]);
 
@@ -72,6 +78,24 @@ app.use(securityHeaders);
 app.all(`${AUTH_BASE_PATH}/*splat`, toNodeHandler(auth));
 app.use(requireSession());
 app.use(express.json({ limit: "1mb" }));
+
+// Audit trail: every change made through the API, with who made it and the outcome.
+app.use((req, res, next) => {
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method) || !req.path.startsWith("/api/")) return next();
+  const started = Date.now();
+  res.on("finish", () => {
+    const user = res.locals.user as SessionUser | undefined;
+    recordAudit({
+      user: user ? `${user.name} <${user.email}>` : null,
+      action: `${req.method} ${req.path}`,
+      target: req.path.match(/^\/api\/(?:jobs|stories|publications)\/([^/]+)/)?.[1] ?? null,
+      status: res.statusCode,
+      durationMs: Date.now() - started,
+    });
+  });
+  // Model calls triggered by this request are tagged with what started them.
+  withTrace({ trigger: `${req.method} ${req.path}` }, async () => next());
+});
 
 app.get("/api/me", (_req, res) => {
   res.json(res.locals.user);
@@ -126,6 +150,7 @@ app.get(
       defaultVoices: DEFAULT_VOICES,
       captionStyles: ["pop", "karaoke", "boxed"],
       claude: agentReady("script"),
+      voiceAgent: agentLabel("voice"),
       reddit: hasRedditAccess(),
     });
   }),
@@ -203,6 +228,21 @@ app.post(
     res.json(publicJob(job));
   }),
 );
+
+app.post(
+  "/api/jobs/:id/redo",
+  route(async (req, res) => {
+    const job = requireJob(req, res);
+    if (!job) return;
+    await redoJob(job, redoInput.parse(req.body ?? {}));
+    res.json(publicJob(job));
+  }),
+);
+
+app.get("/api/jobs/:id/trace", (req, res) => {
+  const job = requireJob(req, res);
+  if (job) res.json(jobTrace(job.id));
+});
 
 app.delete(
   "/api/jobs/:id",
@@ -295,6 +335,14 @@ app.post(
   route(async (req, res) => {
     const story = requireStory(req, res);
     if (story) res.json(await produceStory(story.id));
+  }),
+);
+
+app.post(
+  "/api/stories/:id/redo",
+  route(async (req, res) => {
+    const story = requireStory(req, res);
+    if (story) res.json(await redoStory(story.id));
   }),
 );
 
@@ -473,6 +521,38 @@ app.get("/api/pipeline/events", (req, res) => {
   });
 });
 
+// ---------------------------------------------------------------- observability
+
+app.get("/api/observability", (req, res) => {
+  const range = String(req.query.range ?? "7d");
+  res.json({
+    ...telemetrySummary(range),
+    agents: AGENTS.map((a) => ({ ...a, model: agentLabel(a.id) })),
+    flow: AGENT_FLOW,
+    queue: listJobs()
+      .filter((j) => !["ready", "done", "failed"].includes(j.status))
+      .map((j) => ({ id: j.id, status: j.status, progress: j.progress, title: j.post?.title ?? null })),
+    pipeline: pipelineStatus(),
+  });
+});
+
+app.get("/api/observability/calls/:id", (req, res) => {
+  const call = getLlmCall(String(req.params.id));
+  if (!call) res.status(404).json({ error: "Call not found" });
+  else res.json(call);
+});
+
+app.get("/api/observability/events", (req, res) => {
+  res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
+  const send = (record: { type: string }) => res.write(`data: ${JSON.stringify({ type: record.type })}\n\n`);
+  telemetryEvents.on("record", send);
+  const ping = setInterval(() => res.write(": ping\n\n"), 15000);
+  req.on("close", () => {
+    clearInterval(ping);
+    telemetryEvents.off("record", send);
+  });
+});
+
 // Unknown API routes return JSON 404 instead of the web app.
 app.use("/api", (_req, res) => {
   res.status(404).json({ error: "Not found" });
@@ -497,6 +577,7 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
 
 await initAuth();
 await loadJobs();
+await loadTelemetry();
 await loadAIConfig();
 await loadDomain();
 await loadAccounts();

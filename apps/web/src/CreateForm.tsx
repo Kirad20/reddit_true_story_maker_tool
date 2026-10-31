@@ -1,15 +1,9 @@
-import { useMemo, useRef, useState } from "react";
+import { useState } from "react";
 import { BackgroundPicker } from "./BackgroundPicker";
-import { api, type BackgroundChoice, type Job, type JobOptions, type Options } from "./api";
+import { AUTO_VOICE, api, type BackgroundChoice, type Job, type JobOptions, type Options } from "./api";
+import { VoiceField, voicesForLanguage } from "./VoiceField";
 
 export const CAPTION_LABELS: Record<string, string> = { pop: "Pop", karaoke: "Karaoke", boxed: "Resaltado" };
-
-const voiceLabel = (v: string) => {
-  const [prefix, name] = v.split("_");
-  const accent = { a: "US", b: "UK", e: "ES" }[prefix[0]] ?? prefix[0].toUpperCase();
-  const gender = prefix[1] === "f" ? "♀" : "♂";
-  return `${name[0].toUpperCase()}${name.slice(1)} · ${accent} ${gender}`;
-};
 
 export function CreateForm({ options, onCreated }: { options: Options; onCreated: (job: Job) => void }) {
   const [sourceType, setSourceType] = useState<"url" | "text">("url");
@@ -20,7 +14,7 @@ export function CreateForm({ options, onCreated }: { options: Options; onCreated
   const [commentCount, setCommentCount] = useState(3);
   const [scriptMode, setScriptMode] = useState<"literal" | "claude">("literal");
   const [language, setLanguage] = useState<"en" | "es">("en");
-  const [voice, setVoice] = useState<string>("");
+  const [voice, setVoice] = useState<string>(AUTO_VOICE);
   const [speed, setSpeed] = useState(1.05);
   const [background, setBackground] = useState<BackgroundChoice>(
     options.backgrounds[0] ? { type: "clip", category: options.backgrounds[0].name } : { type: "procedural", preset: "sunset" },
@@ -30,29 +24,9 @@ export function CreateForm({ options, onCreated }: { options: Options; onCreated
   const [maxDurationSec, setMaxDurationSec] = useState(90);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [previewing, setPreviewing] = useState(false);
-  const audio = useRef<HTMLAudioElement | null>(null);
 
-  const voices = useMemo(
-    () => options.voices.filter((v) => (language === "es" ? v.startsWith("e") : /^[ab]/.test(v))),
-    [options.voices, language],
-  );
-  const selectedVoice = voices.includes(voice) ? voice : options.defaultVoices[language];
+  const selectedVoice = voice === AUTO_VOICE || voicesForLanguage(options, language).includes(voice) ? voice : options.defaultVoices[language];
   const needsClaude = scriptMode === "claude" || language === "es";
-
-  async function previewVoice() {
-    setPreviewing(true);
-    try {
-      const src = await api.voicePreview(selectedVoice, language, speed);
-      audio.current?.pause();
-      audio.current = new Audio(src);
-      await audio.current.play();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setPreviewing(false);
-    }
-  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -170,29 +144,15 @@ export function CreateForm({ options, onCreated }: { options: Options; onCreated
         </p>
       )}
 
-      <div className="field">
-        <span>Voz</span>
-        {options.ttsError ? (
-          <p className="warn">{options.ttsError}</p>
-        ) : (
-          <div className="row">
-            <select value={selectedVoice} onChange={(e) => setVoice(e.target.value)}>
-              {voices.map((v) => (
-                <option key={v} value={v}>
-                  {voiceLabel(v)}
-                </option>
-              ))}
-            </select>
-            <button type="button" className="ghost" onClick={previewVoice} disabled={previewing}>
-              {previewing ? "…" : "▶ Escuchar"}
-            </button>
-          </div>
-        )}
-        <label className="inline">
-          Velocidad {speed.toFixed(2)}×
-          <input type="range" min={0.8} max={1.4} step={0.05} value={speed} onChange={(e) => setSpeed(Number(e.target.value))} />
-        </label>
-      </div>
+      <VoiceField
+        options={options}
+        language={language}
+        voice={selectedVoice}
+        speed={speed}
+        onVoice={setVoice}
+        onSpeed={setSpeed}
+        onError={setError}
+      />
 
       <div className="field">
         <span>Fondo</span>

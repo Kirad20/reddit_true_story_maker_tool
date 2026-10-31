@@ -183,6 +183,16 @@ export function StoriesView({
                   ▶ Crear video ahora
                 </button>
               )}
+              {s.jobId && ["produced", "failed"].includes(s.status) && (
+                <button
+                  className="ghost"
+                  disabled={!!busy}
+                  title="Vuelve a procesar guion, voz y video con los mismos trabajos"
+                  onClick={() => act(s.id, () => pipelineApi.redoStory(s.id), "Rehaciendo el video")}
+                >
+                  ↻ Rehacer video
+                </button>
+              )}
               {s.jobId && (
                 <button className="ghost" onClick={() => openJob(s.jobId!)}>
                   {s.partJobIds?.length ? "Video completo" : "Ver video"}

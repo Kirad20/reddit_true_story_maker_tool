@@ -12,7 +12,7 @@ import {
   type Publication,
   type Story,
 } from "./domain";
-import { createJob, getJob, jobEvents, startRender, type Job } from "./jobs";
+import { createJob, getJob, isBusy, jobEvents, redoJob, startRender, type Job } from "./jobs";
 import { publishers } from "./publish";
 import { PublishError } from "./publish/types";
 import { nextSlot } from "./schedule";
@@ -20,6 +20,7 @@ import { partLabel } from "./script";
 import { discoverOriginal, discoverReddit } from "./sources";
 import { planSplit } from "./splitter";
 import { Doc, newId } from "./store";
+import { withTrace } from "./telemetry";
 
 // ---------------------------------------------------------------- activity log
 
@@ -129,6 +130,10 @@ async function createStoryJob(story: Story, body: string, comments: Story["comme
  * split planner finds good cut points, one video per part for TikTok/Facebook.
  */
 export async function produceStory(storyId: string): Promise<Story> {
+  return withTrace({ storyId }, () => produce(storyId));
+}
+
+async function produce(storyId: string): Promise<Story> {
   const story = stories.get(storyId);
   if (!story) throw new Error("Story not found");
   if (story.jobId && ["producing", "produced"].includes(story.status)) throw new Error("This story already has a video");
@@ -158,10 +163,33 @@ export async function produceStory(storyId: string): Promise<Story> {
   });
 }
 
+/**
+ * Make a story's videos again (script, voice, composition, render) keeping the same
+ * jobs, so their publications stay attached. Stories without jobs are produced anew.
+ */
+export async function redoStory(storyId: string): Promise<Story> {
+  const story = stories.get(storyId);
+  if (!story) throw new Error("Story not found");
+  const jobs = storyJobIds(story).map((id) => getJob(id)).filter((j): j is Job => Boolean(j));
+  if (jobs.length === 0) {
+    await stories.update(story.id, { status: "approved", jobId: null, partJobIds: [] });
+    return produceStory(story.id);
+  }
+  if (jobs.some(isBusy)) throw new Error("This story's videos are still being processed");
+  await stories.update(story.id, { status: "producing", error: null });
+  for (const job of jobs) await redoJob(job);
+  await log("info", `Redoing ${jobs.length} video(s) for "${story.title}"`);
+  return stories.get(story.id)!;
+}
+
 /** Follow pipeline jobs: render when the preview is ready, then queue publications. */
 async function onJobUpdate(job: Pick<Job, "id" | "status" | "error">): Promise<void> {
   const story = stories.find((s) => storyJobIds(s).includes(job.id));
   if (!story || story.status !== "producing") return;
+  return withTrace({ storyId: story.id }, () => followStoryJob(story, job));
+}
+
+async function followStoryJob(story: Story, job: Pick<Job, "id" | "status" | "error">): Promise<void> {
   if (job.status === "ready") {
     const full = getJob(job.id);
     if (full && !full.output) await startRender(full);
@@ -438,7 +466,11 @@ let cycling = false;
 let lastCycle: string | null = null;
 
 /** One automation pass: keep the backlog full and keep one story in production. */
-export async function runCycle(force = false): Promise<void> {
+export function runCycle(force = false): Promise<void> {
+  return withTrace({ trigger: force ? "manual cycle" : "automation" }, () => cycle(force));
+}
+
+async function cycle(force: boolean): Promise<void> {
   const cfg = settings.get();
   if ((!cfg.automation.enabled && !force) || cycling) return;
   cycling = true;

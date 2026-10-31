@@ -1,9 +1,22 @@
 import { Player } from "@remotion/player";
 import { StoryVideo } from "@tsm/video";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BackgroundPicker } from "./BackgroundPicker";
 import { CAPTION_LABELS } from "./CreateForm";
-import { PLATFORM_LABEL, api, pipelineApi, type BackgroundChoice, type Job, type Options, type Pipeline } from "./api";
+import { STEP_LABEL, formatMs, formatTokens, formatUsd } from "./ObservabilityView";
+import { VoiceField, voiceLabel } from "./VoiceField";
+import {
+  AUTO_VOICE,
+  PLATFORM_LABEL,
+  api,
+  pipelineApi,
+  type BackgroundChoice,
+  type Job,
+  type JobTrace,
+  type Options,
+  type Pipeline,
+  type RedoOptions,
+} from "./api";
 
 const STEPS: { status: Job["status"]; label: string }[] = [
   { status: "fetching", label: "Leyendo Reddit" },
@@ -12,6 +25,8 @@ const STEPS: { status: Job["status"]; label: string }[] = [
   { status: "composing", label: "Composición" },
   { status: "rendering", label: "Render MP4" },
 ];
+const BUSY: Job["status"][] = ["queued", "fetching", "scripting", "tts", "composing", "rendering"];
+
 const ORDER: Job["status"][] = ["queued", "fetching", "scripting", "tts", "composing", "ready", "rendering", "done"];
 
 function stepState(job: Job, step: Job["status"]): "done" | "active" | "todo" {
@@ -40,6 +55,8 @@ export function JobView({
   const connected = pipeline?.accounts.filter((a) => a.connected).map((a) => a.platform) ?? [];
   const comp = job.composition;
   const editable = job.status === "ready" || job.status === "done";
+  const busyJob = BUSY.includes(job.status);
+  const [redoOpen, setRedoOpen] = useState(false);
 
   async function run(action: () => Promise<unknown>) {
     setBusy(true);
@@ -88,7 +105,33 @@ export function JobView({
           <button className="ghost" disabled={busy} onClick={() => run(() => api.retry(job.id))}>
             Reintentar
           </button>
+          <button className="ghost" disabled={busy} onClick={() => setRedoOpen(true)}>
+            ↻ Rehacer con otros ajustes
+          </button>
         </div>
+      )}
+
+      {redoOpen && !busyJob && (
+        <RedoPanel
+          job={job}
+          options={options}
+          busy={busy}
+          onCancel={() => setRedoOpen(false)}
+          onRedo={(o) =>
+            run(async () => {
+              await api.redo(job.id, o);
+              setRedoOpen(false);
+              setNote(null);
+            })
+          }
+        />
+      )}
+      {job.voiceChoice && (
+        <p className="note small">
+          🎙 Voz {voiceLabel(job.voiceChoice.voice)} ·{" "}
+          {job.voiceChoice.by === "agent" ? "elegida por el Director de voz" : job.voiceChoice.by === "heuristic" ? "elegida por pistas del texto" : "por defecto"}
+          : {job.voiceChoice.reason}
+        </p>
       )}
       {job.warnings.map((w) => (
         <p key={w} className="warn">
@@ -173,8 +216,18 @@ export function JobView({
                 </button>
               )}
               {job.status === "done" && (
-                <button className="ghost" disabled={busy} onClick={() => run(() => api.render(job.id))}>
+                <button className="ghost" disabled={busy} title="Mismo guion y voz, vuelve a generar el MP4" onClick={() => run(() => api.render(job.id))}>
                   Volver a renderizar
+                </button>
+              )}
+              {editable && (
+                <button
+                  className="ghost"
+                  disabled={busy}
+                  title="Vuelve a procesar todo: fuente, guion, voz, composición"
+                  onClick={() => setRedoOpen((o) => !o)}
+                >
+                  ↻ Rehacer video
                 </button>
               )}
               {job.status === "done" && (
@@ -214,6 +267,148 @@ export function JobView({
           </div>
         </div>
       )}
+
+      <JobTraceView job={job} />
     </section>
+  );
+}
+
+/** Make the whole video again (script, voice, composition), optionally with new settings. */
+function RedoPanel({
+  job,
+  options,
+  busy,
+  onRedo,
+  onCancel,
+}: {
+  job: Job;
+  options: Options;
+  busy: boolean;
+  onRedo: (options: RedoOptions) => void;
+  onCancel: () => void;
+}) {
+  const o = job.options;
+  const [scriptMode, setScriptMode] = useState(o.scriptMode);
+  const [language, setLanguage] = useState(o.language);
+  const [voice, setVoice] = useState(o.voice ?? options.defaultVoices[o.language]);
+  const [speed, setSpeed] = useState(o.speed);
+  const [maxDurationSec, setMaxDurationSec] = useState(o.maxDurationSec);
+  const [error, setError] = useState<string | null>(null);
+  // A voice from the other language falls back to automatic.
+  const voiceFits = voice === AUTO_VOICE || (language === "es" ? voice.startsWith("e") : /^[ab]/.test(voice));
+
+  return (
+    <div className="redo-panel">
+      <h3>Rehacer video</h3>
+      <p className="hint">
+        Vuelve a procesar todo desde la fuente: guion, voz, composición. La vista previa y el MP4 actuales se reemplazan
+        {job.status === "done" ? " (vuelve a renderizar al terminar)" : ""}.
+      </p>
+      <div className="grid2">
+        <div className="field">
+          <span>Guion</span>
+          <div className="segmented">
+            <button type="button" className={scriptMode === "literal" ? "on" : ""} onClick={() => setScriptMode("literal")}>
+              Literal
+            </button>
+            <button type="button" className={scriptMode === "claude" ? "on" : ""} onClick={() => setScriptMode("claude")}>
+              Con IA
+            </button>
+          </div>
+        </div>
+        <div className="field">
+          <span>Idioma</span>
+          <div className="segmented">
+            <button type="button" className={language === "en" ? "on" : ""} onClick={() => setLanguage("en")}>
+              Inglés
+            </button>
+            <button type="button" className={language === "es" ? "on" : ""} onClick={() => setLanguage("es")}>
+              Español
+            </button>
+          </div>
+        </div>
+      </div>
+      <VoiceField
+        options={options}
+        language={language}
+        voice={voiceFits ? voice : AUTO_VOICE}
+        speed={speed}
+        onVoice={setVoice}
+        onSpeed={setSpeed}
+        onError={setError}
+      />
+      <label className="field">
+        <span>Duración máxima</span>
+        <select value={maxDurationSec} onChange={(e) => setMaxDurationSec(Number(e.target.value))}>
+          {[30, 60, 90, 120, 180].map((s) => (
+            <option key={s} value={s}>
+              {s < 120 ? `${s} s` : `${s / 60} min`}
+            </option>
+          ))}
+        </select>
+      </label>
+      {error && <p className="error">{error}</p>}
+      <div className="actions">
+        <button
+          className="primary"
+          disabled={busy}
+          onClick={() => onRedo({ scriptMode, language, voice: voiceFits ? voice : AUTO_VOICE, speed, maxDurationSec })}
+        >
+          ↻ Rehacer ahora
+        </button>
+        <button className="ghost" onClick={onCancel}>
+          Cancelar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** What happened inside this video: steps with their duration and every model call with its cost. */
+function JobTraceView({ job }: { job: Job }) {
+  const [trace, setTrace] = useState<JobTrace | null>(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    api.trace(job.id).then(setTrace, () => setTrace(null));
+  }, [open, job.id, job.status]);
+
+  const cost = trace?.calls.reduce((s, c) => s + (c.costUsd ?? 0), 0) ?? 0;
+  const tokens = trace?.calls.reduce((s, c) => s + c.usage.input + c.usage.output + c.usage.cacheRead + c.usage.cacheWrite, 0) ?? 0;
+  return (
+    <details className="trace" onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
+      <summary>🔍 Traza interna de este video</summary>
+      {!trace ? (
+        <p className="muted small">Cargando…</p>
+      ) : (
+        <>
+          <p className="small muted">
+            {trace.calls.length} llamadas a modelos · {formatTokens(tokens)} tokens · {formatUsd(cost)}
+          </p>
+          <ul className="timeline">
+            {[...trace.steps.map((s) => ({ kind: "step" as const, at: s.at, s })), ...trace.calls.map((c) => ({ kind: "call" as const, at: c.at, c }))]
+              .sort((a, b) => a.at.localeCompare(b.at))
+              .map((e) =>
+                e.kind === "step" ? (
+                  <li key={e.s.id} className={e.s.ok ? "ok" : "bad"}>
+                    <time>{new Date(e.at).toLocaleTimeString()}</time>
+                    <b>{STEP_LABEL[e.s.step] ?? e.s.step}</b> · {formatMs(e.s.durationMs)}
+                    {e.s.detail ? ` · ${e.s.detail}` : ""}
+                    {e.s.error ? <span className="error"> · {e.s.error}</span> : null}
+                  </li>
+                ) : (
+                  <li key={e.c.id} className={`call ${e.c.ok ? "ok" : "bad"}`}>
+                    <time>{new Date(e.at).toLocaleTimeString()}</time>
+                    🤖 <b>{e.c.agent}</b> · {e.c.servedModel ?? e.c.model} · {formatTokens(e.c.usage.input + e.c.usage.cacheRead)} in /{" "}
+                    {formatTokens(e.c.usage.output)} out · {formatMs(e.c.durationMs)} · {formatUsd(e.c.costUsd)}
+                    {e.c.error ? <span className="error"> · {e.c.error}</span> : null}
+                  </li>
+                ),
+              )}
+          </ul>
+          {trace.steps.length === 0 && trace.calls.length === 0 && <p className="muted small">Sin registros (videos anteriores a la observabilidad).</p>}
+        </>
+      )}
+    </details>
   );
 }
