@@ -57,6 +57,10 @@ export type Publication = {
   part?: { index: number; total: number } | null;
 };
 
+/** Reddit "top" windows (t=hour|day|week|month|year|all). */
+export type Timeframe = "hour" | "day" | "week" | "month" | "year" | "all";
+export const TIMEFRAMES: Timeframe[] = ["hour", "day", "week", "month", "year", "all"];
+
 export type Genre = "aita" | "tifu" | "revenge" | "relationship" | "workplace" | "creepy" | "wholesome";
 export const GENRES: Genre[] = ["aita", "tifu", "revenge", "relationship", "workplace", "creepy", "wholesome"];
 
@@ -70,7 +74,7 @@ export type Settings = {
   };
   sources: {
     original: { enabled: boolean; perRun: number; genres: Genre[] };
-    reddit: { enabled: boolean; subreddits: string[]; timeframe: "day" | "week"; minScore: number; perRun: number };
+    reddit: { enabled: boolean; subreddits: string[]; timeframe: Timeframe; minScore: number; perRun: number };
   };
   curation: {
     /** Approve stories automatically when the curator scores them at or above minScore. */

@@ -5,12 +5,29 @@ export type EnvCheck = { level: "error" | "warn"; message: string };
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
+/**
+ * PUBLIC_URL, or the domain Coolify assigned to the "app" service (SERVICE_URL_* / SERVICE_FQDN_*).
+ * Read directly instead of only through compose interpolation, which Coolify does not always resolve.
+ */
+export function resolvePublicUrl(env: NodeJS.ProcessEnv): string | null {
+  const candidates = [env.PUBLIC_URL, env.BETTER_AUTH_URL, env.SERVICE_URL_APP_8787, env.SERVICE_URL_APP, env.SERVICE_FQDN_APP_8787, env.SERVICE_FQDN_APP];
+  for (const raw of candidates) {
+    // Coolify may hold several comma-separated domains; the first one is the primary.
+    const value = raw?.split(",")[0]?.trim();
+    // Skip compose placeholders that were left unresolved, like "${SERVICE_URL_APP_8787}".
+    if (!value || value.includes("$")) continue;
+    const url = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+    return url.replace(/\/+$/, "");
+  }
+  return null;
+}
+
 /** Configuration problems that would make a deployment unsafe or broken. */
 export function checkEnvironment(env: NodeJS.ProcessEnv): EnvCheck[] {
   const problems: EnvCheck[] = [];
   const production = env.NODE_ENV === "production";
 
-  if (env.BETTER_AUTH_SECRET && env.BETTER_AUTH_SECRET.length < 32) {
+  if (env.BETTER_AUTH_SECRET && !env.BETTER_AUTH_SECRET.includes("$") && env.BETTER_AUTH_SECRET.length < 32) {
     problems.push({ level: production ? "error" : "warn", message: "BETTER_AUTH_SECRET must be at least 32 characters (or leave it empty to generate one in data/)" });
   }
   if (env.SETUP_PASSWORD && env.SETUP_PASSWORD.length < 12) {
@@ -23,18 +40,19 @@ export function checkEnvironment(env: NodeJS.ProcessEnv): EnvCheck[] {
   const port = Number(env.API_PORT ?? 8787);
   if (!Number.isInteger(port) || port < 1 || port > 65535) problems.push({ level: "error", message: `API_PORT is not a valid port: ${env.API_PORT}` });
 
-  if (env.PUBLIC_URL) {
+  const publicUrl = resolvePublicUrl(env);
+  if (publicUrl) {
     let url: URL | null = null;
     try {
-      url = new URL(env.PUBLIC_URL);
+      url = new URL(publicUrl);
     } catch {
-      problems.push({ level: "error", message: `PUBLIC_URL is not a valid URL: ${env.PUBLIC_URL}` });
+      problems.push({ level: "error", message: `PUBLIC_URL is not a valid URL: ${publicUrl}` });
     }
     if (url && url.protocol !== "https:" && !LOCAL_HOSTS.has(url.hostname)) {
       problems.push({ level: production ? "error" : "warn", message: "PUBLIC_URL must use https (OAuth providers reject plain http)" });
     }
   } else if (production) {
-    problems.push({ level: "warn", message: "PUBLIC_URL is not set: OAuth redirects will point to localhost and publishing accounts cannot be connected" });
+    problems.push({ level: "warn", message: "PUBLIC_URL is not set (and Coolify gave no SERVICE_URL_APP_8787): OAuth redirects will point to localhost and publishing accounts cannot be connected" });
   }
 
   if (env.TTS_URL) {

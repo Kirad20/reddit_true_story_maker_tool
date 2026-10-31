@@ -24,7 +24,9 @@ export const SETUP_EMAIL = (process.env.SETUP_EMAIL || "setup@truestorymaker.loc
 
 /** Signing secret: BETTER_AUTH_SECRET, or one generated once and kept in the data folder. */
 function authSecret(): string {
-  if (process.env.BETTER_AUTH_SECRET) return process.env.BETTER_AUTH_SECRET;
+  const configured = process.env.BETTER_AUTH_SECRET?.trim();
+  // An unresolved compose placeholder ("${SERVICE_BASE64_64_AUTH}") is not a secret.
+  if (configured && !configured.includes("$")) return configured;
   const file = path.join(DATA_DIR, "auth-secret");
   try {
     return fs.readFileSync(file, "utf8").trim();

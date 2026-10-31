@@ -29,8 +29,10 @@ compartido con `tts`), `app-assets` (tus clips de fondo y música, solo si no us
    - `PUBLIC_URL`: solo si quieres forzar una URL distinta a la del dominio asignado.
    - `TRUSTED_ORIGINS`: otros orígenes desde los que se permite iniciar sesión, separados por comas. El dominio por el
      que llega cada petición (cabeceras `X-Forwarded-Host`/`X-Forwarded-Proto` del proxy de Coolify) ya se acepta solo.
-   - `BETTER_AUTH_SECRET` (32+ caracteres): firma las sesiones. Si la dejas vacía se genera una y se guarda en
-     `app-data/auth-secret`.
+   - `BETTER_AUTH_SECRET`: no hay que llenarla. Coolify genera `SERVICE_BASE64_64_AUTH` (64 caracteres
+     aleatorios) en el primer despliegue y la app la usa para firmar sesiones y cifrar los tokens. No la cambies
+     después: cerraría las sesiones y obligaría a reconectar las cuentas. Fuera de Coolify se genera una y se
+     guarda en `app-data/auth-secret`.
    - `SETUP_PASSWORD` (12+ caracteres) y `SETUP_EMAIL`: credenciales fijas para el usuario temporal (ver abajo).
      Sin ellas el correo es `setup@truestorymaker.local` y la contraseña es aleatoria.
 5. **Deploy**. Coolify espera a que `tts` esté sano antes de iniciar `app` (healthchecks del compose).

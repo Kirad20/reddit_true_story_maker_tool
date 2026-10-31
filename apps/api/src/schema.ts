@@ -60,7 +60,7 @@ export const settingsSchema = z.object({
     reddit: z.object({
       enabled: z.boolean(),
       subreddits: z.array(z.string().min(1).max(50)).max(20),
-      timeframe: z.enum(["day", "week"]),
+      timeframe: z.enum(["hour", "day", "week", "month", "year", "all"]),
       minScore: z.number().int().min(0),
       perRun: z.number().int().min(1).max(20),
     }),

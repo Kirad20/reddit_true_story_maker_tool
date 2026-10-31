@@ -1,5 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolvePublicUrl } from "./validate";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -39,8 +40,8 @@ export const IS_PRODUCTION = process.env.NODE_ENV === "production";
 export const API_PORT = Number(process.env.API_PORT ?? 8787);
 /** Origin the renderer uses to download job media from this server (always local). */
 export const API_ORIGIN = process.env.API_ORIGIN ?? `http://localhost:${API_PORT}`;
-/** Public URL of the deployment (e.g. Coolify domain). OAuth redirects are built on it. */
-export const PUBLIC_URL = (process.env.PUBLIC_URL || "").replace(/\/+$/, "") || null;
+/** Public URL of the deployment: PUBLIC_URL, or the domain Coolify assigned to the "app" service. */
+export const PUBLIC_URL = resolvePublicUrl(process.env);
 /** Base for OAuth redirect URIs: the public URL in production, the API itself in development. */
 export const OAUTH_BASE = PUBLIC_URL ?? API_ORIGIN;
 /** Where the browser UI lives (OAuth callbacks send the user back here). */

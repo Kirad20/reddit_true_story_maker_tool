@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { isLoopback } from "../src/security";
-import { checkEnvironment, checkWritable } from "../src/validate";
+import { checkEnvironment, checkWritable, resolvePublicUrl } from "../src/validate";
 
 const errors = (env: NodeJS.ProcessEnv) => checkEnvironment(env).filter((p) => p.level === "error").map((p) => p.message);
 
@@ -30,6 +30,16 @@ describe("checkEnvironment", () => {
   it("warns when production has no public URL", () => {
     const checks = checkEnvironment({ NODE_ENV: "production" });
     expect(checks).toEqual([expect.objectContaining({ level: "warn", message: expect.stringMatching(/PUBLIC_URL/) })]);
+  });
+
+  it("falls back to the domain Coolify assigns when PUBLIC_URL is empty", () => {
+    expect(resolvePublicUrl({ PUBLIC_URL: "", SERVICE_URL_APP_8787: "https://stories.example.com/" })).toBe("https://stories.example.com");
+    expect(resolvePublicUrl({ PUBLIC_URL: "${SERVICE_URL_APP_8787}", SERVICE_FQDN_APP_8787: "stories.example.com,www.example.com" })).toBe(
+      "https://stories.example.com",
+    );
+    expect(resolvePublicUrl({ PUBLIC_URL: "https://forced.example.com", SERVICE_URL_APP_8787: "https://x.example.com" })).toBe("https://forced.example.com");
+    expect(resolvePublicUrl({})).toBeNull();
+    expect(checkEnvironment({ NODE_ENV: "production", SERVICE_URL_APP_8787: "https://stories.example.com" })).toEqual([]);
   });
 
   it("validates ports and service URLs", () => {

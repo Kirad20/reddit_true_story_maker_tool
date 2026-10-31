@@ -147,7 +147,7 @@ export type Settings = {
   automation: { enabled: boolean; intervalMinutes: number; targetBacklog: number };
   sources: {
     original: { enabled: boolean; perRun: number; genres: Genre[] };
-    reddit: { enabled: boolean; subreddits: string[]; timeframe: "day" | "week"; minScore: number; perRun: number };
+    reddit: { enabled: boolean; subreddits: string[]; timeframe: Timeframe; minScore: number; perRun: number };
   };
   curation: { autoApprove: boolean; minScore: number };
   parts: { enabled: boolean; splitAboveSec: number; minPartSec: number; maxParts: 2 | 3 };
@@ -251,6 +251,8 @@ export const pipelineApi = {
 };
 
 /** Pipeline snapshot + stories + publications, refreshed on server events. */
+export type Timeframe = "hour" | "day" | "week" | "month" | "year" | "all";
+
 export function usePipelineData() {
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
   const [stories, setStories] = useState<Story[]>([]);
