@@ -1,11 +1,13 @@
 import { secret } from "../aiconfig";
 import fs from "node:fs/promises";
-import { accounts, saveAccount, type OAuthToken } from "./accounts";
+import { accounts, saveAccount } from "./accounts";
+import { TIKTOK_API } from "./scopes";
+import { tokenSource } from "./tokens";
 import { PublishError, readJson, type PublishInput, type Publisher } from "./types";
 
 // TikTok Content Posting API (Direct Post) with the user's own TikTok developer app.
-const API = "https://open.tiktokapis.com/v2";
-const SCOPES = ["user.info.basic", "video.publish"];
+// Connecting and token refresh go through Better Auth's "tiktok" provider (see auth.ts).
+const API = TIKTOK_API;
 
 const clientKey = () => secret("tiktok_client_key");
 const clientSecret = () => secret("tiktok_client_secret");
@@ -13,33 +15,6 @@ const clientSecret = () => secret("tiktok_client_secret");
 export type TikTokSettings = {
   privacy: "SELF_ONLY" | "MUTUAL_FOLLOW_FRIENDS" | "FOLLOWER_OF_CREATOR" | "PUBLIC_TO_EVERYONE";
 };
-
-async function tokenRequest(params: Record<string, string>): Promise<Record<string, any>> {
-  const res = await fetch(`${API}/oauth/token/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ client_key: clientKey(), client_secret: clientSecret(), ...params }),
-  });
-  const data = await readJson(res);
-  if (!res.ok || data.error) throw new PublishError(`TikTok token error: ${data.error_description ?? data.error ?? res.status}`, false);
-  return data;
-}
-
-async function accessToken(): Promise<string> {
-  const token = accounts.get().tiktok;
-  if (!token) throw new PublishError("TikTok is not connected", false);
-  if (token.expiresAt && token.expiresAt > Date.now() + 60_000) return token.accessToken;
-  if (!token.refreshToken) throw new PublishError("TikTok session expired: reconnect the account", false);
-  const data = await tokenRequest({ grant_type: "refresh_token", refresh_token: token.refreshToken });
-  const next: OAuthToken = {
-    ...token,
-    accessToken: data.access_token,
-    refreshToken: data.refresh_token ?? token.refreshToken,
-    expiresAt: Date.now() + data.expires_in * 1000,
-  };
-  await saveAccount("tiktok", next);
-  return next.accessToken;
-}
 
 async function api(path: string, token: string, body: unknown): Promise<Record<string, any>> {
   const res = await fetch(`${API}${path}`, {
@@ -59,48 +34,30 @@ export const tiktok: Publisher = {
   platform: "tiktok",
 
   status() {
-    const token = accounts.get().tiktok;
+    const linked = accounts.get().tiktok;
     return {
       platform: "tiktok",
       configured: Boolean(clientKey() && clientSecret()),
-      connected: Boolean(token),
-      accountName: token?.accountName ?? null,
+      connected: tokenSource.exists("tiktok"),
+      accountName: linked?.accountName ?? null,
+      linkedBy: linked?.linkedBy ?? null,
       note: "Hasta que TikTok audite tu app, Direct Post solo permite publicaciones privadas (Solo yo).",
     };
   },
 
-  authUrl(state, redirectUri) {
-    const params = new URLSearchParams({
-      client_key: clientKey(),
-      scope: SCOPES.join(","),
-      response_type: "code",
-      redirect_uri: redirectUri,
-      state,
-    });
-    return `https://www.tiktok.com/v2/auth/authorize/?${params}`;
-  },
-
-  async handleCallback(code, redirectUri) {
-    const data = await tokenRequest({ grant_type: "authorization_code", code, redirect_uri: redirectUri });
-    const token: OAuthToken = {
-      accessToken: data.access_token,
-      refreshToken: data.refresh_token ?? null,
-      expiresAt: Date.now() + data.expires_in * 1000,
-      accountName: null,
-      accountId: data.open_id ?? null,
-    };
-    const res = await fetch(`${API}/user/info/?fields=display_name`, { headers: { Authorization: `Bearer ${token.accessToken}` } });
-    token.accountName = (await readJson(res)).data?.user?.display_name ?? null;
-    await saveAccount("tiktok", token);
+  async onLinked(link) {
+    await saveAccount("tiktok", { ...link, accountName: null });
+    const res = await fetch(`${API}/user/info/?fields=display_name`, { headers: { Authorization: `Bearer ${await tokenSource.accessToken("tiktok")}` } });
+    await saveAccount("tiktok", { ...link, accountName: (await readJson(res)).data?.user?.display_name ?? null });
   },
 
   async disconnect() {
-    await saveAccount("tiktok", null);
+    await tokenSource.disconnect("tiktok");
   },
 
   async publish(input: PublishInput, raw) {
     const settings = raw as TikTokSettings;
-    const token = await accessToken();
+    const token = await tokenSource.accessToken("tiktok");
 
     // TikTok requires querying the creator's allowed privacy levels before each post.
     const creator = await api("/post/publish/creator_info/query/", token, {});

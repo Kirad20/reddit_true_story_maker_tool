@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fallbackMetadata } from "../src/agents";
 import type { Story } from "../src/domain";
 import { accounts } from "../src/publish/accounts";
+import { tokenSource } from "../src/publish/tokens";
 import { facebook } from "../src/publish/facebook";
 import { tiktok } from "../src/publish/tiktok";
 import { PublishError } from "../src/publish/types";
@@ -123,7 +124,14 @@ beforeEach(async () => {
     (accounts as unknown as { value: unknown }).value = value;
     return value;
   });
+  // Tokens come from Better Auth; here a fixed one per platform.
+  vi.spyOn(tokenSource, "accessToken").mockImplementation(async (platform) => {
+    if (!accounts.get()[platform]) throw new PublishError(`${platform} is not connected`, false);
+    return { youtube: "AT", tiktok: "TT", facebook: "FBU" }[platform];
+  });
 });
+
+const link = (accountName: string | null = null) => ({ userId: "u1", accountId: "a1", accountName, linkedBy: "Owner" });
 
 afterEach(async () => {
   vi.unstubAllGlobals();
@@ -132,11 +140,10 @@ afterEach(async () => {
 });
 
 const input = { title: "My title", description: "Desc #storytime", tags: ["storytime"], aiGenerated: true };
-const future = Date.now() + 3600_000;
 
 describe("youtube publisher", () => {
   it("creates a resumable session with AI disclosure, then uploads the bytes", async () => {
-    await accounts.set({ youtube: { accessToken: "AT", refreshToken: "RT", expiresAt: future, accountName: "Ch", accountId: "1" }, tiktok: null, facebook: null });
+    await accounts.set({ youtube: link("Ch"), tiktok: null, facebook: null });
     respond([
       (c) => (c.url.includes("uploadType=resumable") ? new Response(null, { status: 200, headers: { location: "https://upload.example/session" } }) : undefined),
       (c) => (c.url === "https://upload.example/session" ? json({ id: "abc123" }) : undefined),
@@ -149,16 +156,12 @@ describe("youtube publisher", () => {
     expect(calls[1].init?.method).toBe("PUT");
   });
 
-  it("refreshes an expired token first", async () => {
-    await accounts.set({ youtube: { accessToken: "OLD", refreshToken: "RT", expiresAt: 0, accountName: null, accountId: null }, tiktok: null, facebook: null });
-    respond([
-      (c) => (c.url.includes("oauth2.googleapis.com/token") ? json({ access_token: "NEW", expires_in: 3600 }) : undefined),
-      (c) => (c.url.includes("uploadType=resumable") ? new Response(null, { headers: { location: "https://upload.example/s" } }) : undefined),
-      (c) => (c.url === "https://upload.example/s" ? json({ id: "x" }) : undefined),
-    ]);
-    await youtube.publish({ ...input, filePath: video }, { privacy: "public" });
-    expect((calls[1].init?.headers as Record<string, string>).Authorization).toBe("Bearer NEW");
-    expect(accounts.get().youtube?.accessToken).toBe("NEW");
+  it("stores the channel name when an account is linked", async () => {
+    await accounts.set({ youtube: null, tiktok: null, facebook: null });
+    respond([(c) => (c.url.includes("/channels?") ? json({ items: [{ id: "UC1", snippet: { title: "Mi canal" } }] }) : undefined)]);
+    await youtube.onLinked({ userId: "u1", accountId: "a1", linkedBy: "Owner" });
+    expect(accounts.get().youtube).toEqual(link("Mi canal"));
+    expect((calls[0].init?.headers as Record<string, string>).Authorization).toBe("Bearer AT");
   });
 
   it("fails without retry when not connected", async () => {
@@ -170,7 +173,7 @@ describe("youtube publisher", () => {
 describe("tiktok publisher", () => {
   it("queries creator info, falls back to an allowed privacy, uploads and polls", async () => {
     vi.stubEnv("TIKTOK_POLL_MS", "1");
-    await accounts.set({ youtube: null, tiktok: { accessToken: "TT", refreshToken: "R", expiresAt: future, accountName: null, accountId: null }, facebook: null });
+    await accounts.set({ youtube: null, tiktok: link(), facebook: null });
     respond([
       (c) => (c.url.endsWith("/creator_info/query/") ? json({ data: { privacy_level_options: ["SELF_ONLY"] }, error: { code: "ok" } }) : undefined),
       (c) => (c.url.endsWith("/video/init/") ? json({ data: { publish_id: "p1", upload_url: "https://up.tiktok/x" }, error: { code: "ok" } }) : undefined),
@@ -190,7 +193,7 @@ describe("tiktok publisher", () => {
   });
 
   it("reports API errors", async () => {
-    await accounts.set({ youtube: null, tiktok: { accessToken: "TT", refreshToken: null, expiresAt: future, accountName: null, accountId: null }, facebook: null });
+    await accounts.set({ youtube: null, tiktok: link(), facebook: null });
     respond([(c) => (c.url.endsWith("/creator_info/query/") ? json({ error: { code: "spam_risk_too_many_posts", message: "Too many posts" } }) : undefined)]);
     await expect(tiktok.publish({ ...input, filePath: video }, { privacy: "SELF_ONLY" })).rejects.toBeInstanceOf(PublishError);
   });
@@ -198,7 +201,7 @@ describe("tiktok publisher", () => {
 
 describe("facebook publisher", () => {
   it("runs the start → upload → finish Reels flow with the page token", async () => {
-    await accounts.set({ youtube: null, tiktok: null, facebook: { userToken: "U", pages: [{ id: "PG", name: "Page", token: "PT" }], pageId: "PG" } });
+    await accounts.set({ youtube: null, tiktok: null, facebook: { ...link(), pages: [{ id: "PG", name: "Page", token: "PT" }], pageId: "PG" } });
     respond([
       (c) => (c.url.includes("upload_phase=start") ? json({ video_id: "V1", upload_url: "https://rupload.example/V1" }) : undefined),
       (c) => (c.url === "https://rupload.example/V1" ? json({ success: true }) : undefined),
@@ -209,5 +212,15 @@ describe("facebook publisher", () => {
     expect(calls[0].url).toContain("/PG/video_reels");
     expect((calls[1].init?.headers as Record<string, string>).Authorization).toBe("OAuth PT");
     expect(calls[2].url).toContain("video_state=PUBLISHED");
+  });
+
+  it("exchanges the linked user token for a long-lived one and keeps the Page tokens", async () => {
+    await accounts.set({ youtube: null, tiktok: null, facebook: null });
+    respond([
+      (c) => (c.url.includes("fb_exchange_token=FBU") ? json({ access_token: "LONG" }) : undefined),
+      (c) => (c.url.includes("/me/accounts") && c.url.includes("access_token=LONG") ? json({ data: [{ id: "PG", name: "Page", access_token: "PT" }] }) : undefined),
+    ]);
+    await facebook.onLinked({ userId: "u1", accountId: "a1", linkedBy: "Owner" });
+    expect(accounts.get().facebook).toEqual({ ...link(), pages: [{ id: "PG", name: "Page", token: "PT" }], pageId: "PG" });
   });
 });

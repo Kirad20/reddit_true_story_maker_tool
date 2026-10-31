@@ -42,8 +42,10 @@ compartido con `tts`), `app-assets` (tus clips de fondo y música).
    momento el usuario temporal y su sesión se borran solos y entras con tu cuenta. (Si reinicias antes de hacerlo,
    la contraseña aleatoria cambia: búscala de nuevo en los logs.)
 7. **Configura en la app** (Ajustes): proveedores y modelos por agente, credenciales de Reddit y de tus apps de
-   YouTube/TikTok/Facebook. Para cada plataforma registra el redirect URI
-   `https://stories.tudominio.com/api/auth/<youtube|tiktok|facebook>/callback`.
+   YouTube/TikTok/Facebook. Para cada plataforma registra el redirect URI (también aparece en su tarjeta)
+   `https://stories.tudominio.com/api/identity/callback/<google|tiktok|facebook>` (YouTube usa `google`) y
+   pulsa **Conectar**. La conexión pasa por Better Auth: los tokens quedan cifrados en `app-data/auth.db`
+   y se renuevan solos.
 8. **Fondos y música** (opcional): copia tus clips al volumen `app-assets` en `backgrounds/<categoría>/` y
    `music/` (por ejemplo con `docker cp` o el terminal del contenedor en Coolify).
 

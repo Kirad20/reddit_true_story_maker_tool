@@ -98,8 +98,22 @@ Activa el **piloto automático** en Ajustes para que el ciclo corra cada N minut
 ## Publicar en YouTube, TikTok y Facebook
 
 Cada plataforma usa **tu propia app de desarrollador** y su API oficial. Pega sus credenciales en Ajustes →
-Cuentas para publicar (tarjeta de cada plataforma),
-registra el redirect URI `http://localhost:8787/api/auth/<plataforma>/callback` y pulsa **Conectar** en Ajustes.
+Cuentas para publicar (tarjeta de cada plataforma), registra el redirect URI que muestra la tarjeta y pulsa
+**Conectar**:
+
+| Plataforma | Redirect URI (local) |
+| --- | --- |
+| YouTube | `http://localhost:8787/api/identity/callback/google` |
+| TikTok | `http://localhost:8787/api/identity/callback/tiktok` |
+| Facebook | `http://localhost:8787/api/identity/callback/facebook` |
+
+La conexión la hace **Better Auth** (el mismo sistema del login): la cuenta de Google, TikTok o Facebook queda
+vinculada a tu usuario, sus tokens se guardan cifrados en `data/auth.db` y Better Auth los renueva solo cuando
+caducan. La última cuenta conectada en cada plataforma es la que usa el pipeline para publicar; la tarjeta
+muestra qué usuario la conectó. Estas cuentas solo sirven para publicar: no permiten iniciar sesión en la app.
+Si borras a un usuario, se desconectan las cuentas que vinculó.
+
+Si venías de una versión anterior, vuelve a conectar las cuentas (cambió el redirect URI).
 
 | Plataforma | Dónde crear la app | Credenciales en Ajustes | Límite hasta la revisión de la plataforma |
 | --- | --- | --- | --- |

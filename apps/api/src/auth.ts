@@ -3,14 +3,20 @@ import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { betterAuth, type BetterAuthOptions } from "better-auth";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { getMigrations } from "better-auth/db/migration";
 import { fromNodeHeaders } from "better-auth/node";
 import { admin } from "better-auth/plugins";
 import type { NextFunction, Request, Response } from "express";
+import { secret } from "./aiconfig";
 import { API_ORIGIN, DATA_DIR, PUBLIC_URL, WEB_ORIGIN } from "./config";
+import { FACEBOOK_SCOPES, TIKTOK_API, TIKTOK_SCOPES, YOUTUBE_SCOPES } from "./publish/scopes";
 import { isLoopback } from "./security";
 
-/** Better Auth lives under this path (the platform OAuth routes keep /api/auth/<platform>/...). */
+/**
+ * Better Auth lives under this path. OAuth redirect URIs for the publishing apps are
+ * <public url>/api/identity/callback/<google|tiktok|facebook>.
+ */
 export const AUTH_BASE_PATH = "/api/identity";
 
 /** Login of the temporary setup user created when there are no users yet. */
@@ -36,6 +42,80 @@ db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
 
 const trustedOrigins = [...new Set([API_ORIGIN, WEB_ORIGIN, PUBLIC_URL].filter((o): o is string => Boolean(o)))];
 
+/**
+ * YouTube (Google), TikTok and Facebook are linked to the logged-in user to publish
+ * with them, never used to sign in. Their app credentials are edited at runtime in
+ * Ajustes → Cuentas, so they are read through getters on every request.
+ */
+const socialProviders = {
+  google: {
+    get clientId() {
+      return secret("youtube_client_id");
+    },
+    get clientSecret() {
+      return secret("youtube_client_secret");
+    },
+    scope: YOUTUBE_SCOPES,
+    accessType: "offline",
+    prompt: "consent",
+    disableSignUp: true,
+  },
+  tiktok: {
+    get clientKey() {
+      return secret("tiktok_client_key");
+    },
+    get clientSecret() {
+      return secret("tiktok_client_secret");
+    },
+    // Login Kit grants user.info.basic; the default user.info.profile needs extra approval.
+    disableDefaultScope: true,
+    scope: TIKTOK_SCOPES,
+    disableSignUp: true,
+    async getUserInfo(token) {
+      const res = await fetch(`${TIKTOK_API}/user/info/?fields=open_id,display_name,avatar_url`, {
+        headers: { Authorization: `Bearer ${token.accessToken}` },
+      });
+      const profile = (await res.json().catch(() => null)) as { data?: { user?: { open_id?: string; display_name?: string; avatar_url?: string } } } | null;
+      const user = profile?.data?.user;
+      if (!res.ok || !user?.open_id) return null;
+      return {
+        // The account id comes from data.data.user.open_id.
+        user: { name: user.display_name ?? "", email: `${user.open_id}@tiktok.invalid`, image: user.avatar_url, emailVerified: false },
+        data: profile as never,
+      };
+    },
+  },
+  facebook: {
+    get clientId() {
+      return secret("facebook_app_id");
+    },
+    get clientSecret() {
+      return secret("facebook_app_secret");
+    },
+    scope: FACEBOOK_SCOPES,
+    disableSignUp: true,
+  },
+} satisfies BetterAuthOptions["socialProviders"];
+
+export type LinkedAccountEvent = { providerId: string; userId: string; accountId: string; userName: string | null };
+const linkListeners = new Set<(event: LinkedAccountEvent) => Promise<void> | void>();
+/** Called after a user connected (or reconnected) a social account. */
+export const onAccountLinked = (fn: (event: LinkedAccountEvent) => Promise<void> | void) => void linkListeners.add(fn);
+
+function accountLinked(account: { id: string; userId: string; providerId: string }, ctx: { path?: string } | null | undefined) {
+  // Only real link callbacks: token refreshes also update the account row.
+  if (account.providerId === "credential" || !ctx?.path?.startsWith("/callback/")) return;
+  const user = db.prepare(`SELECT name FROM "user" WHERE id = ?`).get(account.userId) as { name: string } | undefined;
+  const event = { providerId: account.providerId, userId: account.userId, accountId: account.id, userName: user?.name ?? null };
+  // After the request: listeners call back into Better Auth for the (decrypted) token.
+  setImmediate(() => {
+    for (const fn of linkListeners) Promise.resolve(fn(event)).catch((e) => console.error("[auth] account link listener failed:", e));
+  });
+}
+
+export const linkedAccountExists = (accountId: string): boolean => Boolean(db.prepare(`SELECT 1 FROM "account" WHERE id = ?`).get(accountId));
+export const deleteAccountRow = (accountId: string): void => void db.prepare(`DELETE FROM "account" WHERE id = ?`).run(accountId);
+
 const options = {
   appName: "TrueStoryMaker",
   baseURL: `${PUBLIC_URL ?? API_ORIGIN}${AUTH_BASE_PATH}`,
@@ -52,8 +132,34 @@ const options = {
       temporary: { type: "boolean", defaultValue: false, input: false },
     },
   },
+  socialProviders,
+  account: {
+    // Tokens are stored encrypted with the auth secret.
+    encryptOAuthTokens: true,
+    // The channel/page account rarely shares the user's login email (TikTok gives none at all).
+    accountLinking: { enabled: true, allowDifferentEmails: true, trustedProviders: ["google", "tiktok", "facebook"] },
+  },
   plugins: [admin({ defaultRole: "user", adminRoles: ["admin"] })],
+  hooks: {
+    // Social accounts are only linked for publishing: signing in with them is not allowed.
+    before: createAuthMiddleware(async (ctx) => {
+      if (ctx.path === "/sign-in/social" || ctx.path === "/sign-in/oauth2") {
+        throw new APIError("FORBIDDEN", { message: "Inicia sesión con tu correo y contraseña" });
+      }
+    }),
+  },
+  logger: {
+    log(level, message, ...args) {
+      // Expected until the platform credentials are filled in Ajustes.
+      if (/missing clientId/.test(message)) return;
+      console[level === "error" ? "error" : level === "warn" ? "warn" : "log"](`[auth] ${message}`, ...args);
+    },
+  },
   databaseHooks: {
+    account: {
+      create: { after: async (account, ctx) => accountLinked(account, ctx) },
+      update: { after: async (account, ctx) => accountLinked(account, ctx) },
+    },
     user: {
       create: { after: async (user) => void purgeTemporaryUsersIfReplaced(user) },
       update: { after: async (user) => void purgeTemporaryUsersIfReplaced(user) },

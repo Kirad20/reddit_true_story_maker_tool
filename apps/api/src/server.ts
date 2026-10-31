@@ -14,7 +14,6 @@ import {
   JOBS_DIR,
   TTS_URL,
   WEB_DIST,
-  WEB_ORIGIN,
 } from "./config";
 import { securityHeaders } from "./security";
 import { checkEnvironment, checkWritable, reportOrExit } from "./validate";
@@ -48,7 +47,7 @@ import {
   startAutomation,
 } from "./automation";
 import { PLATFORMS, loadDomain, publications, settings, stories, storyJobIds, type Platform, type Settings } from "./domain";
-import { accountStatuses, facebook, finishAuth, loadAccounts, publishers, startAuth } from "./publish";
+import { accountStatuses, facebook, loadAccounts, onPlatformLinked, publishers } from "./publish";
 import { accounts } from "./publish/accounts";
 import { hasRedditAccess } from "./reddit";
 import {
@@ -434,29 +433,8 @@ const platformParam = (req: Request): Platform => {
   return platform;
 };
 
-app.get("/api/auth/:platform/start", (req, res) => {
-  try {
-    res.redirect(startAuth(platformParam(req)));
-  } catch (error) {
-    res.redirect(`${WEB_ORIGIN}/?tab=settings&authError=${encodeURIComponent((error as Error).message)}`);
-  }
-});
-
-app.get(
-  "/api/auth/:platform/callback",
-  route(async (req, res) => {
-    const platform = platformParam(req);
-    const { code, state, error, error_description } = req.query as Record<string, string | undefined>;
-    try {
-      if (error || !code || !state) throw new Error(error_description ?? error ?? "Login was cancelled");
-      await finishAuth(platform, code, state);
-      await log("info", `Connected ${platform}`);
-      res.redirect(`${WEB_ORIGIN}/?tab=settings&connected=${platform}`);
-    } catch (e) {
-      res.redirect(`${WEB_ORIGIN}/?tab=settings&authError=${encodeURIComponent((e as Error).message)}`);
-    }
-  }),
-);
+// Connecting happens in the browser through Better Auth (authClient.linkSocial → /api/identity/callback/<provider>).
+onPlatformLinked((event) => void log(event.ok ? "info" : "error", event.message));
 
 app.post(
   "/api/auth/:platform/disconnect",

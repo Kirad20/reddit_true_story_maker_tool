@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
+import { authClient } from "./auth";
 import { CAPTION_LABELS } from "./CreateForm";
 import { CredentialsSettings, ModelsSettings } from "./ModelsSettings";
-import { PLATFORMS, PLATFORM_LABEL, pipelineApi, type Genre, type Options, type Pipeline, type Platform, type Settings } from "./api";
+import { PLATFORMS, PLATFORM_LABEL, pipelineApi, type AccountStatus, type Genre, type Options, type Pipeline, type Platform, type Settings } from "./api";
 
 const GENRES: { id: Genre; label: string }[] = [
   { id: "aita", label: "¿Soy el malo? (AITA)" },
@@ -22,7 +23,19 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
   );
 }
 
+/** Connect through Better Auth: the account is linked to the logged-in user and used to publish. */
+async function connect(a: AccountStatus, onError: (message: string) => void) {
+  const { error } = await authClient.linkSocial({
+    provider: a.provider,
+    // Absolute: in development the provider calls back the API (:8787), not Vite (:5173).
+    callbackURL: `${location.origin}/?tab=settings&connected=${a.platform}`,
+    errorCallbackURL: `${location.origin}/?tab=settings&linkFailed=${a.platform}`,
+  });
+  if (error) onError(error.message ?? `No se pudo conectar ${PLATFORM_LABEL[a.platform]}`);
+}
+
 function Accounts({ pipeline, refresh }: { pipeline: Pipeline; refresh: () => void }) {
+  const [connectError, setConnectError] = useState<string | null>(null);
   const [pages, setPages] = useState<{ pages: { id: string; name: string }[]; pageId: string | null } | null>(null);
   const fb = pipeline.accounts.find((a) => a.platform === "facebook");
   useEffect(() => {
@@ -31,13 +44,14 @@ function Accounts({ pipeline, refresh }: { pipeline: Pipeline; refresh: () => vo
 
   return (
     <div className="accounts">
+      {connectError && <p className="error">{connectError}</p>}
       {pipeline.accounts.map((a) => (
         <div key={a.platform} className="account">
           <div className="account-body">
             <strong className={`platform ${a.platform}`}>{PLATFORM_LABEL[a.platform]}</strong>
             <div className="small muted">
               {a.connected
-                ? `Conectado${a.accountName ? `: ${a.accountName}` : ""}`
+                ? `Conectado${a.accountName ? `: ${a.accountName}` : ""}${a.linkedBy ? ` · por ${a.linkedBy}` : ""}`
                 : a.configured
                   ? "Sin conectar"
                   : "Faltan las credenciales de tu app (abajo)"}
@@ -57,6 +71,9 @@ function Accounts({ pipeline, refresh }: { pipeline: Pipeline; refresh: () => vo
             )}
             <details className="creds">
               <summary className="small">Credenciales de la app de {PLATFORM_LABEL[a.platform]}</summary>
+              <p className="hint">
+                Redirect URI para registrar en la app: <code>{a.redirectUri}</code>
+              </p>
               <CredentialsSettings group={a.platform} onSaved={refresh} />
             </details>
           </div>
@@ -65,9 +82,9 @@ function Accounts({ pipeline, refresh }: { pipeline: Pipeline; refresh: () => vo
               Desconectar
             </button>
           ) : (
-            <a className={`ghost ${a.configured ? "" : "disabled"}`} href={a.configured ? `/api/auth/${a.platform}/start` : undefined}>
+            <button className="ghost" disabled={!a.configured} onClick={() => connect(a, setConnectError)}>
               Conectar
-            </a>
+            </button>
           )}
         </div>
       ))}
@@ -80,7 +97,11 @@ export function SettingsView({ pipeline, options, refresh }: { pipeline: Pipelin
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const params = new URLSearchParams(location.search);
-  const authError = params.get("authError");
+  // Better Auth sends errors back as ?error=<code>&error_description=…
+  const linkFailed = params.get("linkFailed");
+  const authError = linkFailed
+    ? `${PLATFORM_LABEL[linkFailed as Platform] ?? linkFailed}: ${params.get("error_description") ?? params.get("error") ?? "error desconocido"}`
+    : params.get("authError");
   const connected = params.get("connected");
 
   useEffect(() => setS(pipeline.settings), [pipeline.settings]);
@@ -126,7 +147,8 @@ export function SettingsView({ pipeline, options, refresh }: { pipeline: Pipelin
         <h2>Cuentas para publicar</h2>
         <p className="muted small">
           Cada plataforma necesita tu propia app de desarrollador: pega sus credenciales en la tarjeta de la plataforma, registra el redirect
-          URI <code>http://localhost:8787/api/auth/&lt;plataforma&gt;/callback</code> y pulsa Conectar. Ver README.
+          URI que aparece ahí y pulsa Conectar. La cuenta queda vinculada a tu usuario (Better Auth) y el pipeline publica con ella. Ver
+          README.
         </p>
         <Accounts pipeline={pipeline} refresh={refresh} />
       </section>

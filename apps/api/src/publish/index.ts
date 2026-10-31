@@ -1,39 +1,38 @@
-import { randomUUID } from "node:crypto";
+import { AUTH_BASE_PATH, onAccountLinked } from "../auth";
 import { OAUTH_BASE } from "../config";
-import type { Platform } from "../domain";
-import { accounts } from "./accounts";
+import { PLATFORMS, type Platform } from "../domain";
+import { PROVIDER_OF, loadAccounts } from "./accounts";
 import { facebook } from "./facebook";
 import { tiktok } from "./tiktok";
 import type { Publisher } from "./types";
 import { youtube } from "./youtube";
 
 export const publishers: Record<Platform, Publisher> = { youtube, tiktok, facebook };
-export { facebook };
+export { facebook, loadAccounts };
 
-export const loadAccounts = () => accounts.load();
+export type LinkEvent = { platform: Platform; ok: boolean; message: string };
+const linkListeners = new Set<(event: LinkEvent) => void>();
+/** Results of connecting an account (for the activity log). */
+export const onPlatformLinked = (fn: (event: LinkEvent) => void) => linkListeners.add(fn);
 
-export const redirectUri = (platform: Platform) => `${OAUTH_BASE}/api/auth/${platform}/callback`;
-
-// CSRF protection for OAuth: state values we issued and have not seen back yet.
-const pendingStates = new Map<string, { platform: Platform; createdAt: number }>();
-
-export function startAuth(platform: Platform): string {
-  const publisher = publishers[platform];
-  if (!publisher.status().configured) throw new Error(`Add the ${platform} app credentials in Settings → Credenciales first`);
-  const state = randomUUID();
-  pendingStates.set(state, { platform, createdAt: Date.now() });
-  return publisher.authUrl(state, redirectUri(platform));
-}
-
-export async function finishAuth(platform: Platform, code: string, state: string): Promise<void> {
-  const pending = pendingStates.get(state);
-  pendingStates.delete(state);
-  if (!pending || pending.platform !== platform || Date.now() - pending.createdAt > 15 * 60_000) {
-    throw new Error("Invalid or expired login attempt, try connecting again");
+// A Google/TikTok/Facebook account linked through Better Auth becomes the publishing account of its platform.
+onAccountLinked(async ({ providerId, userId, accountId, userName }) => {
+  const platform = PLATFORMS.find((p) => PROVIDER_OF[p] === providerId);
+  if (!platform) return;
+  let event: LinkEvent;
+  try {
+    await publishers[platform].onLinked({ userId, accountId, linkedBy: userName });
+    const status = publishers[platform].status();
+    event = { platform, ok: true, message: `Connected ${platform}${status.accountName ? ` (${status.accountName})` : ""}${userName ? ` by ${userName}` : ""}` };
+  } catch (error) {
+    event = { platform, ok: false, message: `Connected ${platform}, but reading the account failed: ${(error as Error).message}` };
   }
-  await publishers[platform].handleCallback(code, redirectUri(platform));
-}
+  for (const fn of linkListeners) fn(event);
+});
+
+/** Redirect URI to register in each platform's developer app. */
+export const redirectUri = (platform: Platform) => `${OAUTH_BASE}${AUTH_BASE_PATH}/callback/${PROVIDER_OF[platform]}`;
 
 export function accountStatuses() {
-  return Object.values(publishers).map((p) => p.status());
+  return Object.values(publishers).map((p) => ({ ...p.status(), provider: PROVIDER_OF[p.platform], redirectUri: redirectUri(p.platform) }));
 }

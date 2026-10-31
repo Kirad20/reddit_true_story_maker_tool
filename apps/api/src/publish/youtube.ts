@@ -1,92 +1,49 @@
 import { secret } from "../aiconfig";
 import fs from "node:fs/promises";
-import { accounts, saveAccount, type OAuthToken } from "./accounts";
+import { accounts, saveAccount } from "./accounts";
+import { tokenSource } from "./tokens";
 import { PublishError, readJson, type PublishInput, type Publisher } from "./types";
 
 // YouTube Data API v3 with the user's own Google OAuth client.
-const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
-const TOKEN_URL = "https://oauth2.googleapis.com/token";
-const SCOPES = ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly"];
+// Connecting and token refresh go through Better Auth's "google" provider (see auth.ts).
 
 const clientId = () => secret("youtube_client_id");
 const clientSecret = () => secret("youtube_client_secret");
 
 export type YouTubeSettings = { privacy: "private" | "unlisted" | "public" };
 
-async function tokenRequest(params: Record<string, string>): Promise<Record<string, any>> {
-  const res = await fetch(TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ client_id: clientId(), client_secret: clientSecret(), ...params }),
-  });
-  const data = await readJson(res);
-  if (!res.ok) throw new PublishError(`Google token error: ${data.error_description ?? data.error ?? res.status}`, false);
-  return data;
-}
-
-async function accessToken(): Promise<string> {
-  const token = accounts.get().youtube;
-  if (!token) throw new PublishError("YouTube is not connected", false);
-  if (token.expiresAt && token.expiresAt > Date.now() + 60_000) return token.accessToken;
-  if (!token.refreshToken) throw new PublishError("YouTube session expired: reconnect the account", false);
-  const data = await tokenRequest({ grant_type: "refresh_token", refresh_token: token.refreshToken });
-  const next: OAuthToken = { ...token, accessToken: data.access_token, expiresAt: Date.now() + data.expires_in * 1000 };
-  await saveAccount("youtube", next);
-  return next.accessToken;
-}
-
 export const youtube: Publisher = {
   platform: "youtube",
 
   status() {
-    const token = accounts.get().youtube;
+    const linked = accounts.get().youtube;
     return {
       platform: "youtube",
       configured: Boolean(clientId() && clientSecret()),
-      connected: Boolean(token),
-      accountName: token?.accountName ?? null,
+      connected: tokenSource.exists("youtube"),
+      accountName: linked?.accountName ?? null,
+      linkedBy: linked?.linkedBy ?? null,
       note: "Hasta que Google verifique tu app OAuth, los videos que suba quedan bloqueados como privados.",
     };
   },
 
-  authUrl(state, redirectUri) {
-    const params = new URLSearchParams({
-      client_id: clientId(),
-      redirect_uri: redirectUri,
-      response_type: "code",
-      scope: SCOPES.join(" "),
-      access_type: "offline",
-      prompt: "consent",
-      state,
-    });
-    return `${AUTH_URL}?${params}`;
-  },
-
-  async handleCallback(code, redirectUri) {
-    const data = await tokenRequest({ grant_type: "authorization_code", code, redirect_uri: redirectUri });
-    const token: OAuthToken = {
-      accessToken: data.access_token,
-      refreshToken: data.refresh_token ?? null,
-      expiresAt: Date.now() + data.expires_in * 1000,
-      accountName: null,
-      accountId: null,
-    };
+  async onLinked(link) {
+    await saveAccount("youtube", { ...link, accountName: null });
     const res = await fetch("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true", {
-      headers: { Authorization: `Bearer ${token.accessToken}` },
+      headers: { Authorization: `Bearer ${await tokenSource.accessToken("youtube")}` },
     });
     const channel = (await readJson(res)).items?.[0];
-    token.accountName = channel?.snippet?.title ?? null;
-    token.accountId = channel?.id ?? null;
-    await saveAccount("youtube", token);
+    if (!channel) throw new Error("This Google account has no YouTube channel");
+    await saveAccount("youtube", { ...link, accountName: channel.snippet?.title ?? null });
   },
 
   async disconnect() {
-    await saveAccount("youtube", null);
+    await tokenSource.disconnect("youtube");
   },
 
   async publish(input: PublishInput, raw) {
     const settings = raw as YouTubeSettings;
-    const token = await accessToken();
+    const token = await tokenSource.accessToken("youtube");
     const file = await fs.readFile(input.filePath);
 
     // Resumable upload: create the session with metadata, then PUT the bytes.

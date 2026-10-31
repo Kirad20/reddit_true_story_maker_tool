@@ -157,7 +157,19 @@ export type Settings = {
   };
 };
 
-export type AccountStatus = { platform: Platform; configured: boolean; connected: boolean; accountName: string | null; note: string | null };
+export type AccountStatus = {
+  platform: Platform;
+  configured: boolean;
+  connected: boolean;
+  accountName: string | null;
+  /** App user who connected it. */
+  linkedBy: string | null;
+  note: string | null;
+  /** Better Auth social provider used to connect it. */
+  provider: "google" | "tiktok" | "facebook";
+  /** Redirect URI to register in the platform's developer app. */
+  redirectUri: string;
+};
 
 export type Pipeline = {
   status: { lastCycle: string | null; cycling: boolean; publishing: boolean; enabled: boolean };
