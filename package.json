@@ -13,7 +13,8 @@
     "studio": "npm run studio -w @tsm/video",
     "test": "npm test --workspaces --if-present && uv run --directory services/tts pytest -q",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "smoke": "npm run smoke -w @tsm/api"
+    "smoke": "npm run smoke -w @tsm/api",
+    "assets:push": "npm run assets:push -w @tsm/api --"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",

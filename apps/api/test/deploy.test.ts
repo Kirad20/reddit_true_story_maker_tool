@@ -55,3 +55,12 @@ describe("loopback detection", () => {
     expect(isLoopback("172.18.0.5")).toBe(false);
   });
 });
+
+describe("providers input", () => {
+  it("treats an empty id as a new provider (the UI sends one before saving)", async () => {
+    const { providersInput } = await import("../src/schema");
+    const parsed = providersInput.parse({ providers: [{ id: "", name: "Anthropic", kind: "anthropic", baseUrl: null, apiKey: "sk-test" }] });
+    expect(parsed.providers[0].id).toBeUndefined();
+    expect(providersInput.parse({ providers: [{ id: "p_1", name: "x", kind: "openai", baseUrl: "https://a.b/v1/" }] }).providers[0]).toMatchObject({ id: "p_1", baseUrl: "https://a.b/v1" });
+  });
+});

@@ -78,6 +78,10 @@ bloquearlos o borrarlos. No hay registro público.
   Cada carpeta es una categoría. Usa clips que tengas derecho a usar. Si no hay clips, hay fondos
   animados incluidos.
 - `assets/music/*.mp3`: música de fondo opcional.
+- **En producción** pueden vivir en un bucket compatible con S3 (SeaweedFS, MinIO, AWS…) con la misma estructura:
+  define `S3_ENDPOINT`, `S3_BUCKET` y las claves (ver `.env.example`) y sube tu carpeta con `npm run assets:push`.
+  El bucket puede ser privado: la API transmite los archivos. Detalles en
+  [docs/deploy-coolify.md](docs/deploy-coolify.md#fondos-y-música-en-seaweedfs-u-otro-s3).
 
 ## Pipeline automático
 
@@ -190,5 +194,6 @@ y CI que construye las imágenes y renderiza un video de prueba. Guía: [docs/de
 | `npm run typecheck` | TypeScript en todos los paquetes |
 | `npm run smoke` | Video de prueba de punta a punta sin red (requiere `npm run tts` corriendo) |
 | `npm run studio` | Remotion Studio para editar la composición |
+| `npm run assets:push` | Sube `assets/` (fondos y música) al bucket S3 configurado en `S3_*` (`-- --dry-run` para probar) |
 
 Diseño: [docs/superpowers/specs/2026-10-31-truestorymaker-design.md](docs/superpowers/specs/2026-10-31-truestorymaker-design.md)

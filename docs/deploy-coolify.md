@@ -8,7 +8,8 @@ La app corre como dos contenedores definidos en [`docker-compose.yml`](../docker
 | `tts` | Voz Kokoro + tiempos por palabra (faster-whisper). Modelos incluidos en la imagen | 8766 (solo red interna) |
 
 Volúmenes persistentes: `app-data` (ajustes, claves, usuarios y sesiones, historias, publicaciones), `app-jobs` (voces y videos,
-compartido con `tts`), `app-assets` (tus clips de fondo y música).
+compartido con `tts`), `app-assets` (tus clips de fondo y música, solo si no usas un bucket S3; ver
+[Fondos y música en SeaweedFS](#fondos-y-música-en-seaweedfs-u-otro-s3)).
 
 ## Requisitos del servidor
 
@@ -48,16 +49,73 @@ compartido con `tts`), `app-assets` (tus clips de fondo y música).
    `https://stories.tudominio.com/api/identity/callback/<google|tiktok|facebook>` (YouTube usa `google`) y
    pulsa **Conectar**. La conexión pasa por Better Auth: los tokens quedan cifrados en `app-data/auth.db`
    y se renuevan solos.
-8. **Fondos y música** (opcional): copia tus clips al volumen `app-assets` en `backgrounds/<categoría>/` y
-   `music/` (por ejemplo con `docker cp` o el terminal del contenedor en Coolify).
+8. **Fondos y música** (opcional): recomendado en un bucket de SeaweedFS (ver la sección siguiente). Sin bucket,
+   copia tus clips al volumen `app-assets` en `backgrounds/<categoría>/` y `music/` (por ejemplo con `docker cp` o
+   el terminal del contenedor en Coolify).
+
+## Fondos y música en SeaweedFS (u otro S3)
+
+Con `S3_BUCKET` definido, la app lee los clips de fondo y la música de un bucket compatible con S3 en lugar del
+volumen `app-assets`. Sirve SeaweedFS, MinIO, Garage, Cloudflare R2 o AWS S3. Los videos generados (`app-jobs`)
+siguen en su volumen.
+
+- **El bucket puede ser privado.** La API transmite los archivos al reproductor y al renderizador por
+  `/media/assets/...` (con peticiones por rangos y tras el login), así que el S3 solo tiene que ser accesible desde
+  el contenedor `app`, no desde internet.
+- **Misma estructura que la carpeta**: `<S3_PREFIX>backgrounds/<categoría>/<clip>.mp4` y `<S3_PREFIX>music/<canción>.mp3`.
+  Cada "carpeta" de `backgrounds/` es una categoría. La lista se refresca cada 30 s: lo que subas aparece solo.
+- **Duración de los clips**: se lee solo la cabecera del video (unos KB por peticiones por rangos), no el archivo entero.
+
+### Variables (servicio `app`)
+
+| Variable | Ejemplo | Notas |
+| --- | --- | --- |
+| `S3_ENDPOINT` | `http://seaweedfs:8333` | Gateway S3 de SeaweedFS (`weed s3`, puerto 8333 por defecto). Vacío = AWS |
+| `S3_BUCKET` | `truestorymaker` | Activa el almacenamiento S3 |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | | Las de tu `s3.json` de SeaweedFS. Déjalas vacías si tu SeaweedFS corre sin identidades |
+| `S3_PREFIX` | `assets` | Opcional: carpeta dentro del bucket |
+| `S3_REGION` | `us-east-1` | SeaweedFS la ignora |
+| `S3_FORCE_PATH_STYLE` | `true` | Por defecto `true` (necesario en SeaweedFS/MinIO); `false` para AWS con dominios virtuales |
+
+### Pasos con SeaweedFS
+
+1. **Red**: el contenedor `app` debe llegar al gateway S3. Si SeaweedFS es otro recurso de Coolify en el mismo
+   servidor, activa *Connect to Predefined Network* en ambos y usa su nombre de servicio
+   (`http://<servicio-seaweedfs>:8333`); si no, usa su URL pública (`https://s3.tudominio.com`).
+2. **Crea el bucket** (una vez), con `weed shell` o con cualquier cliente S3:
+   ```bash
+   echo "s3.bucket.create -name truestorymaker" | weed shell
+   ```
+   ```bash
+   aws --endpoint-url http://seaweedfs:8333 s3 mb s3://truestorymaker
+   ```
+3. **Credenciales**: si SeaweedFS usa `-s3.config=s3.json`, crea una identidad con acciones `Read`, `List` (y `Write`
+   si vas a subir con ella) sobre el bucket y pon su clave en `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY`.
+4. **Variables** en Coolify (tabla de arriba) y **Redeploy**. Al arrancar, los logs de `app` muestran
+   `[assets] backgrounds and music from S3` o el motivo si no llega al bucket. `GET /api/ready` incluye
+   `"assets":{"kind":"s3","ok":true}`.
+5. **Sube los archivos**:
+   - desde tu PC, con tu carpeta `assets/` local y las mismas variables `S3_*` en `.env` (apuntando a la URL
+     pública del S3): `npm run assets:push` (añade `-- --dry-run` para ver qué subiría; omite lo que ya está con el
+     mismo tamaño);
+   - o con cualquier cliente S3: `aws --endpoint-url … s3 sync assets/ s3://truestorymaker/`
+     (con `S3_PREFIX`, súbelo a `s3://truestorymaker/<prefijo>/`), o el filer web de SeaweedFS (puerto 8888).
+6. Si migras desde el volumen `app-assets`, puedes hacer el `assets:push` desde el terminal del contenedor `app`
+   (los archivos están en `/app/assets`) y luego borrar el volumen.
+
+Si el bucket no responde, la app sigue funcionando con los fondos animados: la vista de fondos muestra el error y
+`/api/ready` devuelve 503.
 
 ## Validaciones
 
 - **Al arrancar**, la API revisa la configuración y se niega a iniciar si en producción `BETTER_AUTH_SECRET` o
   `SETUP_PASSWORD` son demasiado cortas, si `PUBLIC_URL` no es https, si un puerto o URL es inválido o si los volúmenes no se pueden escribir.
   Los motivos aparecen en los logs del contenedor `app`.
+- **S3**: con `S3_BUCKET`, la API se niega a iniciar si `S3_ENDPOINT` no es una URL http(s), si solo hay una de las
+  dos claves o si `S3_FORCE_PATH_STYLE` no es `true`/`false`. Si el bucket no responde al arrancar, solo avisa.
 - **Healthchecks**: `GET /api/health` (vida, sin contraseña) en `app`; `GET /health` en `tts`.
-  `GET /api/ready` (con sesión iniciada) confirma además que la voz responde y que los volúmenes son escribibles.
+  `GET /api/ready` (con sesión iniciada) confirma además que la voz responde, que los volúmenes son escribibles y,
+  con S3, que el bucket responde.
 - **CI** ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) en cada push a `main` y en cada PR:
   typecheck, pruebas (Vitest y pytest), build de la web, validación del compose, build de ambas imágenes y
   prueba de humo del stack completo: login con el usuario temporal,

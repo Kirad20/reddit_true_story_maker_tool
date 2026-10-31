@@ -17,12 +17,21 @@ services:
       - SETUP_EMAIL=${SETUP_EMAIL:-}
       - SETUP_PASSWORD=${SETUP_PASSWORD:-}
       - TRUSTED_ORIGINS=${TRUSTED_ORIGINS:-}
+      # Backgrounds and music in an S3-compatible bucket (SeaweedFS, MinIO, AWS). Empty S3_BUCKET = app-assets volume.
+      - S3_ENDPOINT=${S3_ENDPOINT:-}
+      - S3_BUCKET=${S3_BUCKET:-}
+      - S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID:-}
+      - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY:-}
+      - S3_REGION=${S3_REGION:-}
+      - S3_PREFIX=${S3_PREFIX:-}
+      - S3_FORCE_PATH_STYLE=${S3_FORCE_PATH_STYLE:-}
       - NODE_ENV=production
       - API_PORT=8787
       - TTS_URL=http://tts:8766
     volumes:
       - app-data:/app/data
       - app-jobs:/app/jobs
+      # Only used when S3_BUCKET is empty.
       - app-assets:/app/assets
     # Chrome (Remotion renderer) needs more shared memory than Docker's 64 MB default.
     shm_size: 1gb

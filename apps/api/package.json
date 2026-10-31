@@ -7,15 +7,19 @@
     "start": "tsx --env-file-if-exists=../../.env src/server.ts",
     "smoke": "tsx --env-file-if-exists=../../.env scripts/smoke.ts",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "assets:push": "tsx --env-file-if-exists=../../.env scripts/push-assets.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",
+    "@aws-sdk/client-s3": "^3.1161.0",
+    "@aws-sdk/s3-request-presigner": "^3.1161.0",
     "@remotion/bundler": "4",
     "@remotion/renderer": "4",
     "@tsm/video": "*",
     "better-auth": "^1.7.14",
     "express": "^5.1.0",
+    "mediabunny": "^1.62.0",
     "openai": "^7.47.0",
     "zod": "^3.24.0"
   },

@@ -111,10 +111,20 @@ export function BackgroundPicker({
               </>
             )}
       </div>
-      {options.backgrounds.length === 0 && (
+      {options.assetsError && <p className="warn">{options.assetsError}</p>}
+      {options.backgrounds.length === 0 && !options.assetsError && (
         <p className="hint">
-          Para usar gameplay, pon tus clips en <code>assets/backgrounds/&lt;categoría&gt;/</code> (por ejemplo{" "}
-          <code>assets/backgrounds/minecraft/parkour1.mp4</code>).
+          {options.assetStorage === "s3" ? (
+            <>
+              Para usar gameplay, sube tus clips al bucket en <code>backgrounds/&lt;categoría&gt;/</code> (por ejemplo{" "}
+              <code>backgrounds/minecraft/parkour1.mp4</code>) o usa <code>npm run assets:push</code>.
+            </>
+          ) : (
+            <>
+              Para usar gameplay, pon tus clips en <code>assets/backgrounds/&lt;categoría&gt;/</code> (por ejemplo{" "}
+              <code>assets/backgrounds/minecraft/parkour1.mp4</code>).
+            </>
+          )}
         </p>
       )}
     </div>

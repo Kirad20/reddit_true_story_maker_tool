@@ -44,6 +44,32 @@ export function checkEnvironment(env: NodeJS.ProcessEnv): EnvCheck[] {
       problems.push({ level: "error", message: `TTS_URL is not a valid URL: ${env.TTS_URL}` });
     }
   }
+  problems.push(...checkS3(env));
+  return problems;
+}
+
+/** S3-compatible asset storage (SeaweedFS, MinIO, AWS): enabled by S3_BUCKET. */
+function checkS3(env: NodeJS.ProcessEnv): EnvCheck[] {
+  const problems: EnvCheck[] = [];
+  const s3Vars = ["S3_ENDPOINT", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY", "S3_PREFIX", "S3_REGION"].filter((k) => env[k]);
+  if (!env.S3_BUCKET) {
+    if (s3Vars.length) problems.push({ level: "warn", message: `${s3Vars.join(", ")} set but S3_BUCKET is empty: assets are read from the local assets/ folder` });
+    return problems;
+  }
+  if (env.S3_ENDPOINT) {
+    try {
+      const url = new URL(env.S3_ENDPOINT);
+      if (!["http:", "https:"].includes(url.protocol)) throw new Error("protocol");
+    } catch {
+      problems.push({ level: "error", message: `S3_ENDPOINT is not a valid http(s) URL: ${env.S3_ENDPOINT}` });
+    }
+  }
+  if (!!env.S3_ACCESS_KEY_ID !== !!env.S3_SECRET_ACCESS_KEY) {
+    problems.push({ level: "error", message: "Set both S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY (or neither for an S3 server without authentication)" });
+  }
+  if (env.S3_FORCE_PATH_STYLE && !["true", "false"].includes(env.S3_FORCE_PATH_STYLE)) {
+    problems.push({ level: "error", message: `S3_FORCE_PATH_STYLE must be "true" or "false": ${env.S3_FORCE_PATH_STYLE}` });
+  }
   return problems;
 }
 

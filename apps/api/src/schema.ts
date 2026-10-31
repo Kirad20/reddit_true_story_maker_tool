@@ -120,7 +120,12 @@ export const providersInput = z.object({
   providers: z
     .array(
       z.object({
-        id: z.string().min(1).max(40).optional(),
+        /** Missing or "" = a new provider (the server assigns its id). */
+        id: z
+          .string()
+          .max(40)
+          .optional()
+          .transform((id) => id || undefined),
         name: z.string().min(1).max(60),
         kind: z.enum(["anthropic", "openai"]),
         baseUrl: z
