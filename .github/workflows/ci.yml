@@ -41,19 +41,13 @@ jobs:
     needs: checks
     runs-on: ubuntu-latest
     env:
-      APP_PASSWORD: ci-smoke-password-123
+      SETUP_PASSWORD: ci-smoke-password-123
       COMPOSE: docker compose -f docker-compose.yml -f docker-compose.local.yml
     steps:
       - uses: actions/checkout@v4
 
       - name: Validate compose (Coolify file)
         run: $COMPOSE config --quiet
-
-      - name: Compose refuses to deploy without APP_PASSWORD
-        run: |
-          if APP_PASSWORD= docker compose -f docker-compose.yml config --quiet 2>/dev/null; then
-            echo "docker-compose.yml accepted an empty APP_PASSWORD"; exit 1
-          fi
 
       - name: Build images
         run: $COMPOSE build
@@ -66,40 +60,45 @@ jobs:
           set -euo pipefail
           base=http://localhost:8787
           curl -fsS "$base/api/health"
-          # Everything except /api/health requires the password.
+          # Everything except /api/health and the login endpoints requires a session.
           test "$(curl -s -o /dev/null -w '%{http_code}' "$base/api/options")" = 401
-          test "$(curl -s -o /dev/null -w '%{http_code}' -u admin:wrong "$base/api/options")" = 401
-          curl -fsS -u "admin:$APP_PASSWORD" "$base/api/ready" | tee /dev/stderr | grep -q '"ready":true'
-          curl -fsS -u "admin:$APP_PASSWORD" "$base/" | grep -q '<div id="root">'
-          curl -fsS -u "admin:$APP_PASSWORD" "$base/api/options" | grep -q '"voices":\["'
+          login() {
+            curl -s -o /dev/null -w '%{http_code}' -c jar.txt -H "Origin: $base" -H 'Content-Type: application/json' \
+              "$base/api/identity/sign-in/email" -d "{\"email\":\"setup@truestorymaker.local\",\"password\":\"$1\"}"
+          }
+          test "$(login wrong-password)" = 401
+          test "$(login "$SETUP_PASSWORD")" = 200
+          curl -fsS -b jar.txt "$base/api/ready" | tee /dev/stderr | grep -q '"ready":true'
+          curl -fsS "$base/" | grep -q '<div id="root">'
+          curl -fsS -b jar.txt "$base/api/options" | grep -q '"voices":\["'
 
       - name: Render a video end to end
         timeout-minutes: 10
         run: |
           set -euo pipefail
           base=http://localhost:8787
-          auth="admin:$APP_PASSWORD"
-          job=$(curl -fsS -u "$auth" -H 'Content-Type: application/json' "$base/api/jobs" \
+          auth="-b jar.txt"
+          job=$(curl -fsS $auth -H 'Content-Type: application/json' "$base/api/jobs" \
             -d '{"source":{"type":"text","title":"CI smoke test","body":"This is a short story to check that voice and rendering work inside the containers."},"maxDurationSec":20}' \
             | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
           echo "job $job"
           for i in $(seq 1 60); do
-            status=$(curl -fsS -u "$auth" "$base/api/jobs/$job" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')
+            status=$(curl -fsS $auth "$base/api/jobs/$job" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')
             echo "status $status"
             [ "$status" = ready ] && break
-            [ "$status" = failed ] && { curl -fsS -u "$auth" "$base/api/jobs/$job"; exit 1; }
+            [ "$status" = failed ] && { curl -fsS $auth "$base/api/jobs/$job"; exit 1; }
             sleep 5
           done
-          curl -fsS -u "$auth" -X POST "$base/api/jobs/$job/render" > /dev/null
+          curl -fsS $auth -X POST "$base/api/jobs/$job/render" > /dev/null
           for i in $(seq 1 90); do
-            status=$(curl -fsS -u "$auth" "$base/api/jobs/$job" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')
+            status=$(curl -fsS $auth "$base/api/jobs/$job" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')
             echo "status $status"
             [ "$status" = done ] && break
-            [ "$status" = failed ] && { curl -fsS -u "$auth" "$base/api/jobs/$job"; exit 1; }
+            [ "$status" = failed ] && { curl -fsS $auth "$base/api/jobs/$job"; exit 1; }
             sleep 5
           done
           test "$status" = done
-          curl -fsS -u "$auth" -o final.mp4 "$base/media/jobs/$job/final.mp4"
+          curl -fsS $auth -o final.mp4 "$base/media/jobs/$job/final.mp4"
           test "$(stat -c %s final.mp4)" -gt 100000
 
       - name: Logs on failure

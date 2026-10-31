@@ -54,6 +54,19 @@ npm run dev
 
 Abre <http://localhost:5173>. Levanta tres procesos: voz (8766), API (8787) y web (5173).
 
+### Acceso y usuarios
+
+La app pide iniciar sesión ([Better Auth](https://better-auth.com), correo y contraseña; usuarios en `data/auth.db`).
+
+1. **Primer arranque**: como no hay usuarios, la API crea un **usuario temporal** de administrador y muestra sus
+   datos en la consola (`[auth] TEMPORARY SETUP USER`, correo `setup@truestorymaker.local`). Para fijar la
+   contraseña usa `SETUP_PASSWORD` en `.env`; si no, es aleatoria y cambia en cada arranque mientras exista.
+2. Entra con él y en la pestaña **Usuarios** crea tu cuenta con rol **Administrador**.
+3. El usuario temporal se **borra automáticamente** en ese momento (con su sesión) y entras con tu cuenta.
+
+En **Usuarios** (solo administradores) puedes crear usuarios, cambiar su rol, restablecer contraseñas,
+bloquearlos o borrarlos. No hay registro público.
+
 1. Pega el link del post (o el texto), elige comentarios, idioma, voz, fondo y subtítulos.
 2. Cuando termine la voz aparece la **vista previa**: cambia estilo de subtítulos, fondo o música sin
    regenerar la voz.
@@ -68,7 +81,7 @@ Abre <http://localhost:5173>. Levanta tres procesos: voz (8766), API (8787) y we
 
 ## Pipeline automático
 
-Pestañas **Panel → Historias → Videos → Publicaciones → Ajustes**:
+Pestañas **Panel → Historias → Videos → Publicaciones → Ajustes** (y **Usuarios** para administradores):
 
 1. **Descubrir**: el agente escribe historias **originales** (ficción en estilo Reddit, por géneros) con Claude.
    Si Reddit te aprueba acceso a su API, también puede traer posts top de subreddits por la API oficial.
@@ -112,6 +125,7 @@ Los videos se marcan como contenido generado con IA (`containsSyntheticMedia` en
 | `apps/api/src/automation.ts` | Orquestador: descubrir → curar → producir → publicar, horarios y reintentos |
 | `apps/api/src/agents.ts` | Agentes Claude: escritor de historias, curador, metadatos de publicación |
 | `apps/api/src/publish/` | Publicadores YouTube, TikTok y Facebook (OAuth + APIs oficiales) |
+| `apps/api/src/auth.ts` | Login (Better Auth + plugin admin), usuario temporal de instalación, protección de la API |
 | `data/` | Historias, publicaciones, ajustes, actividad y tokens de tus cuentas (`accounts.json`) |
 | `packages/video` | Composición Remotion compartida (fondo, tarjeta de Reddit, subtítulos) |
 | `services/tts` | Python + FastAPI: Kokoro (voz) + faster-whisper (tiempos por palabra) |

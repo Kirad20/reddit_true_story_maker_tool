@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { CaptionStyle, VideoComposition } from "@tsm/video";
+import { UNAUTHORIZED_EVENT } from "./auth";
 
 export type BackgroundChoice =
   | { type: "procedural"; preset: "sunset" | "ocean" | "neon" }
@@ -53,6 +54,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: init?.body ? { "Content-Type": "application/json" } : undefined,
   });
+  if (res.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
   if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);

@@ -14,6 +14,7 @@
     "@remotion/bundler": "4",
     "@remotion/renderer": "4",
     "@tsm/video": "*",
+    "better-auth": "^1.7.14",
     "express": "^5.1.0",
     "openai": "^7.47.0",
     "zod": "^3.24.0"

@@ -9,12 +9,15 @@ const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 export function checkEnvironment(env: NodeJS.ProcessEnv): EnvCheck[] {
   const problems: EnvCheck[] = [];
   const production = env.NODE_ENV === "production";
-  const password = env.APP_PASSWORD ?? "";
 
-  if (production && !password) {
-    problems.push({ level: "error", message: "APP_PASSWORD is required in production: the app holds your API keys and can publish to your accounts" });
-  } else if (password && password.length < 12) {
-    problems.push({ level: production ? "error" : "warn", message: "APP_PASSWORD must be at least 12 characters" });
+  if (env.BETTER_AUTH_SECRET && env.BETTER_AUTH_SECRET.length < 32) {
+    problems.push({ level: production ? "error" : "warn", message: "BETTER_AUTH_SECRET must be at least 32 characters (or leave it empty to generate one in data/)" });
+  }
+  if (env.SETUP_PASSWORD && env.SETUP_PASSWORD.length < 12) {
+    problems.push({ level: production ? "error" : "warn", message: "SETUP_PASSWORD must be at least 12 characters (or leave it empty to get a random one in the logs)" });
+  }
+  if (env.APP_PASSWORD) {
+    problems.push({ level: "warn", message: "APP_PASSWORD is no longer used: log in with the temporary setup user printed in the logs and create your users in Usuarios" });
   }
 
   const port = Number(env.API_PORT ?? 8787);

@@ -202,3 +202,15 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .badge.ready { color: var(--accent-2); border-color: #5a4220; }
 .badge.failed { color: var(--err); border-color: #5a2328; }
 .badge.rendering, .badge.tts, .badge.fetching, .badge.scripting, .badge.composing, .badge.queued { color: var(--accent); }
+
+/* Login and users */
+.login { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
+.login-card { width: 100%; max-width: 400px; }
+.login-card h2 { margin: 6px 0 0; }
+.whoami { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.warn-box { background: #2e2614; border: 1px solid #5a4a20; color: #ffe2a6; border-radius: 10px; padding: 10px 12px; margin: 0 0 14px; font-size: 14px; }
+.inline-link { display: inline; color: var(--accent-2); text-decoration: underline; font-weight: 600; }
+.users { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.user-row { display: grid; grid-template-columns: 1fr 170px auto; gap: 12px; align-items: center; background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+@media (max-width: 800px) { .user-row { grid-template-columns: 1fr; } }
+.ghost.danger:not(:disabled):hover { color: var(--err); border-color: #5a2328; }

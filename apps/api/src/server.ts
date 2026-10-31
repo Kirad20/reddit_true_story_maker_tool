@@ -1,13 +1,13 @@
-﻿import express, { type NextFunction, type Request, type Response } from "express";
+import express, { type NextFunction, type Request, type Response } from "express";
 import { ZodError } from "zod";
 import { PROCEDURAL_PRESETS, listBackgrounds, listMusic } from "./assets";
 import { AGENTS, CREDENTIALS, reconcileAgents, agentLabel, agentReady, aiConfig, loadAIConfig, mask, newProviderId, secret, setSecrets } from "./aiconfig";
 import fs from "node:fs";
 import path from "node:path";
+import { toNodeHandler } from "better-auth/node";
+import { AUTH_BASE_PATH, auth, initAuth, requireSession } from "./auth";
 import {
   API_PORT,
-  APP_PASSWORD,
-  APP_USER,
   ASSETS_DIR,
   DATA_DIR,
   DEFAULT_VOICES,
@@ -16,7 +16,7 @@ import {
   WEB_DIST,
   WEB_ORIGIN,
 } from "./config";
-import { basicAuth, securityHeaders } from "./security";
+import { securityHeaders } from "./security";
 import { checkEnvironment, checkWritable, reportOrExit } from "./validate";
 import { listProviderModels } from "./llm";
 import {
@@ -69,8 +69,14 @@ reportOrExit([...checkEnvironment(process.env), ...(await checkWritable([DATA_DI
 const app = express();
 app.disable("x-powered-by");
 app.use(securityHeaders);
-if (APP_PASSWORD) app.use(basicAuth(APP_USER, APP_PASSWORD));
+// Better Auth (login, sessions, user management) reads the raw body: mount it before express.json.
+app.all(`${AUTH_BASE_PATH}/*splat`, toNodeHandler(auth));
+app.use(requireSession());
 app.use(express.json({ limit: "1mb" }));
+
+app.get("/api/me", (_req, res) => {
+  res.json(res.locals.user);
+});
 
 // Media for the preview player and the renderer (supports range requests).
 app.use("/media/jobs", express.static(JOBS_DIR, { index: false }));
@@ -511,6 +517,7 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   res.status(400).json({ error: message });
 });
 
+await initAuth();
 await loadJobs();
 await loadAIConfig();
 await loadDomain();
