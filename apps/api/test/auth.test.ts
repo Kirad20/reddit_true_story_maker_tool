@@ -78,3 +78,17 @@ describe("auth", () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe("trusted origins", () => {
+  it("trusts the domain the request arrives on (behind a reverse proxy) but not other sites", async () => {
+    const { requestOrigin, trustedOriginsFor } = await import("../src/auth");
+    const proxied = new Request("http://app:8787/api/identity/sign-in/email", {
+      headers: { host: "app:8787", "x-forwarded-host": "stories.example.com", "x-forwarded-proto": "https" },
+    });
+    expect(requestOrigin(proxied.headers)).toBe("https://stories.example.com");
+    expect(trustedOriginsFor(proxied)).toContain("https://stories.example.com");
+    expect(trustedOriginsFor(proxied)).not.toContain("https://evil.example.com");
+    expect(requestOrigin(new Headers({ host: "localhost:8787" }))).toBe("http://localhost:8787");
+    expect(trustedOriginsFor()).not.toContain("https://stories.example.com");
+  });
+});

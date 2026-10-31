@@ -26,6 +26,8 @@ compartido con `tts`), `app-assets` (tus clips de fondo y música).
    No asignes dominio a `tts`: solo debe ser accesible desde `app`.
 4. **Variables de entorno** (pestaña *Environment Variables*), todas opcionales:
    - `PUBLIC_URL`: solo si quieres forzar una URL distinta a la del dominio asignado.
+   - `TRUSTED_ORIGINS`: otros orígenes desde los que se permite iniciar sesión, separados por comas. El dominio por el
+     que llega cada petición (cabeceras `X-Forwarded-Host`/`X-Forwarded-Proto` del proxy de Coolify) ya se acepta solo.
    - `BETTER_AUTH_SECRET` (32+ caracteres): firma las sesiones. Si la dejas vacía se genera una y se guarda en
      `app-data/auth-secret`.
    - `SETUP_PASSWORD` (12+ caracteres) y `SETUP_EMAIL`: credenciales fijas para el usuario temporal (ver abajo).
@@ -70,6 +72,13 @@ SETUP_PASSWORD=una-clave-larga-local docker compose -f docker-compose.yml -f doc
 ```
 
 Abre <http://localhost:8787> y entra con `setup@truestorymaker.local` y esa contraseña; luego crea tu usuario en **Usuarios**.
+
+## Problemas comunes
+
+- **`{"message":"Invalid origin","code":"INVALID_ORIGIN"}` al iniciar sesión**: el navegador está en una URL que
+  la app no reconoce. Al arrancar, los logs de `app` muestran `[auth] trusted origins: …`. Desde esta versión el
+  dominio por el que entras se acepta automáticamente; si usas otra URL (por ejemplo otro dominio que apunta al
+  mismo servicio sin pasar por el proxy), añádela en `TRUSTED_ORIGINS` y redespliega.
 
 ## Seguridad
 

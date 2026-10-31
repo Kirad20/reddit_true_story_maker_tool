@@ -16,6 +16,7 @@ services:
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-}
       - SETUP_EMAIL=${SETUP_EMAIL:-}
       - SETUP_PASSWORD=${SETUP_PASSWORD:-}
+      - TRUSTED_ORIGINS=${TRUSTED_ORIGINS:-}
       - NODE_ENV=production
       - API_PORT=8787
       - TTS_URL=http://tts:8766

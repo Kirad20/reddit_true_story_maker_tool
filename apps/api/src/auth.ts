@@ -40,7 +40,42 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 const db = new DatabaseSync(path.join(DATA_DIR, "auth.db"));
 db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
 
-const trustedOrigins = [...new Set([API_ORIGIN, WEB_ORIGIN, PUBLIC_URL].filter((o): o is string => Boolean(o)))];
+/** Only scheme://host[:port] of a URL; null when it does not parse. */
+const originOf = (url: string): string | null => {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+};
+
+/** Configured origins, plus extra ones in TRUSTED_ORIGINS (comma separated). */
+const configuredOrigins = [
+  ...new Set(
+    [API_ORIGIN, WEB_ORIGIN, PUBLIC_URL, ...(process.env.TRUSTED_ORIGINS ?? "").split(",")]
+      .map((o) => (o ? originOf(o.trim()) : null))
+      .filter((o): o is string => Boolean(o)),
+  ),
+];
+
+/**
+ * Origin the browser used to reach this server, from the reverse proxy headers (Coolify/Traefik
+ * send X-Forwarded-Host/Proto) or Host. The web UI is served by this same server, so a request whose
+ * Origin equals its own host is same-origin; a cross-site page still sends its own Origin and is rejected.
+ */
+export function requestOrigin(headers: Headers): string | null {
+  const first = (name: string) => headers.get(name)?.split(",")[0]?.trim() || null;
+  const host = first("x-forwarded-host") ?? first("host");
+  if (!host) return null;
+  const proto = first("x-forwarded-proto") ?? "http";
+  return originOf(`${proto}://${host}`);
+}
+
+/** Better Auth rejects sign-in from any other origin with INVALID_ORIGIN. */
+export function trustedOriginsFor(request?: globalThis.Request): string[] {
+  const own = request ? requestOrigin(request.headers) : null;
+  return own && !configuredOrigins.includes(own) ? [...configuredOrigins, own] : configuredOrigins;
+}
 
 /**
  * YouTube (Google), TikTok and Facebook are linked to the logged-in user to publish
@@ -122,7 +157,7 @@ const options = {
   basePath: AUTH_BASE_PATH,
   secret: authSecret(),
   database: db,
-  trustedOrigins,
+  trustedOrigins: trustedOriginsFor,
   // Accounts are created by admins in "Usuarios"; nobody can sign up on their own.
   emailAndPassword: { enabled: true, disableSignUp: true, minPasswordLength: 8 },
   session: { expiresIn: 60 * 60 * 24 * 14, updateAge: 60 * 60 * 24 },
@@ -206,6 +241,7 @@ function purgeTemporaryUsersIfReplaced(user: AuthUser) {
  * admin in "Usuarios"; the temporary user is deleted right after.
  */
 export async function initAuth(): Promise<void> {
+  console.log(`[auth] trusted origins: ${configuredOrigins.join(", ")} (+ the domain each request arrives on)`);
   purgeTemporaryUsers();
 
   const { n } = db.prepare(`SELECT COUNT(*) AS n FROM "user"`).get() as { n: number };
