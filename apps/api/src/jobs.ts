@@ -12,7 +12,9 @@ import { fetchRedditPost, type RedditPost } from "./reddit";
 import { renderVideo } from "./render";
 import type { CompositionPatch, JobOptions } from "./schema";
 import { buildLiteralBlocks, fitToDuration, partLabel, withPartNarration, type ScriptBlock } from "./script";
-import { synthesize, type TtsResult } from "./tts";
+import { span, withTrace } from "./telemetry";
+import { listVoices, synthesize, type TtsResult } from "./tts";
+import { AUTO_VOICE, chooseVoice, type VoiceChoice } from "./voice";
 
 export type JobStatus =
   | "queued"
@@ -42,6 +44,12 @@ export type Job = {
   tts: TtsResult | null;
   composition: VideoComposition | null;
   output: string | null;
+  /** How the voice was picked when the user chose "automatic". */
+  voiceChoice?: VoiceChoice | null;
+  /** Bumped on every full redo; busts browser caches of the voice/MP4 files. */
+  revision?: number;
+  /** Render the MP4 right after the preview is ready (a redo of a finished video). */
+  autoRender?: boolean;
 };
 
 const jobs = new Map<string, Job>();
@@ -50,9 +58,14 @@ jobEvents.setMaxListeners(100);
 
 // One pipeline step at a time: TTS and rendering both saturate the CPU.
 let queue: Promise<void> = Promise.resolve();
-function enqueue(task: () => Promise<void>): void {
-  queue = queue.then(task, task);
+function enqueue(job: Job, task: () => Promise<void>): void {
+  const traced = () => withTrace({ jobId: job.id }, task);
+  queue = queue.then(traced, traced);
 }
+
+/** Statuses where the job is waiting in the queue or being worked on. */
+const BUSY: JobStatus[] = ["queued", "fetching", "scripting", "tts", "composing", "rendering"];
+export const isBusy = (job: Job): boolean => BUSY.includes(job.status);
 
 const jobDir = (id: string) => path.join(JOBS_DIR, id);
 export const mediaUrl = (id: string, file: string) => `/media/jobs/${id}/${file}`;
@@ -124,19 +137,50 @@ export async function createJob(options: JobOptions): Promise<Job> {
   };
   jobs.set(job.id, job);
   await save(job);
-  enqueue(() => runPipeline(job));
+  enqueue(job, () => runPipeline(job));
   return job;
 }
 
 export async function retryJob(job: Job): Promise<void> {
+  if (isBusy(job)) throw new Error("This video is already being processed");
   await update(job, { status: "queued", error: null, progress: 0 });
-  enqueue(() => (job.composition ? runRender(job) : runPipeline(job)));
+  enqueue(job, () => (job.composition ? runRender(job) : runPipeline(job)));
 }
 
 export async function startRender(job: Job): Promise<void> {
   if (!job.composition) throw new Error("This video is not ready to render yet");
-  await update(job, { status: "queued", progress: 0, error: null });
-  enqueue(() => runRender(job));
+  if (isBusy(job)) throw new Error("This video is already being processed");
+  // The old MP4 is stale from here on: never offer it while the new one renders.
+  await update(job, { status: "queued", progress: 0, error: null, output: null });
+  enqueue(job, () => runRender(job));
+}
+
+/**
+ * Rebuild the video from scratch: source, script, voice and composition run again
+ * (with optional new settings), replacing the previous preview and MP4.
+ */
+export async function redoJob(job: Job, overrides: Partial<JobOptions> = {}): Promise<void> {
+  if (isBusy(job)) throw new Error("This video is already being processed");
+  const options = { ...job.options, ...Object.fromEntries(Object.entries(overrides).filter(([, v]) => v !== undefined)) } as JobOptions;
+  // A finished video comes back finished: the new MP4 renders right after the preview.
+  const autoRender = job.status === "done";
+  await fs.rm(path.join(jobDir(job.id), "final.mp4"), { force: true });
+  await update(job, {
+    autoRender,
+    options,
+    status: "queued",
+    progress: 0,
+    error: null,
+    warnings: [],
+    blocks: null,
+    cardTitle: null,
+    tts: null,
+    composition: null,
+    output: null,
+    voiceChoice: null,
+    revision: (job.revision ?? 0) + 1,
+  });
+  enqueue(job, () => runPipeline(job));
 }
 
 async function fail(job: Job, error: unknown): Promise<void> {
@@ -181,11 +225,11 @@ function resolveMusic(file: string | null, volume: number): VideoComposition["mu
   return { src: `/media/assets/music/${encodeURIComponent(file)}`, volume };
 }
 
-async function compose(job: Job): Promise<void> {
+async function compose(job: Job, next: JobStatus = "ready"): Promise<void> {
   const { options, post, blocks, tts } = job;
   if (!post || !blocks || !tts) throw new Error("Missing script or voice");
   const composition = buildComposition({
-    audioSrc: mediaUrl(job.id, "voice.wav"),
+    audioSrc: `${mediaUrl(job.id, "voice.wav")}?v=${job.revision ?? 0}`,
     tts,
     blocks,
     post: {
@@ -200,7 +244,7 @@ async function compose(job: Job): Promise<void> {
     captionStyle: options.captionStyle,
     part: options.part ? { ...options.part, label: partLabel(options.part, options.language) } : null,
   });
-  await update(job, { composition, status: "ready", progress: 1 });
+  await update(job, { composition, status: next, progress: next === "ready" ? 1 : 0 });
 }
 
 async function runPipeline(job: Job): Promise<void> {
@@ -208,50 +252,83 @@ async function runPipeline(job: Job): Promise<void> {
   try {
     // 1. Source
     await update(job, { status: "fetching", progress: 0 });
-    const post = options.source.type === "url"
-      ? await fetchRedditPost(options.source.url, options.commentCount)
-      : postFromText(options.source);
+    const post = await span(
+      job.id,
+      "fetching",
+      () => (options.source.type === "url" ? fetchRedditPost(options.source.url, options.commentCount) : Promise.resolve(postFromText(options.source))),
+      (p) => `${options.source.type === "url" ? "Reddit" : "texto"} · ${p.body.length} caracteres · ${p.comments.length} comentarios`,
+    );
     const warnings: string[] = [];
     if (post.nsfw) warnings.push("This post is marked NSFW.");
     await update(job, { post, warnings });
 
     // 2. Script
     await update(job, { status: "scripting" });
-    let blocks = fitToDuration(buildLiteralBlocks(post), options.maxDurationSec, options.speed);
-    const needsClaude = options.scriptMode === "claude" || options.language === "es";
-    if (needsClaude) {
-      if (!agentReady("script")) {
-        if (options.language === "es") throw new Error("Spanish needs translation: set a model for the Script agent (Settings → Modelos)");
-        warnings.push("No model for the Script agent (Settings → Modelos): used the literal script.");
-      } else {
+    let blocks = await span(
+      job.id,
+      "scripting",
+      async () => {
+        let result = fitToDuration(buildLiteralBlocks(post), options.maxDurationSec, options.speed);
+        const needsClaude = options.scriptMode === "claude" || options.language === "es";
+        if (!needsClaude) return result;
+        if (!agentReady("script")) {
+          if (options.language === "es") throw new Error("Spanish needs translation: set a model for the Script agent (Settings → Modelos)");
+          warnings.push("No model for the Script agent (Settings → Modelos): used the literal script.");
+          return result;
+        }
         try {
-          blocks = await adaptScript(blocks, { rewrite: options.scriptMode === "claude", language: options.language });
+          result = await adaptScript(result, { rewrite: options.scriptMode === "claude", language: options.language });
         } catch (error) {
           if (options.language === "es" || !(error instanceof ClaudeError)) throw error;
           warnings.push(`${error.message}. Used the literal script.`);
         }
-      }
-    }
+        return result;
+      },
+      (b) => `${b.length} bloques · ${options.scriptMode === "claude" ? "reescrito" : "literal"} · ${options.language}`,
+    );
     // The on-screen card keeps the clean title; the narration announces the part.
     const cardTitle = blocks.find((b) => b.kind === "title")?.text ?? post.title;
     if (options.part) blocks = withPartNarration(blocks, options.part, options.language);
     await update(job, { blocks, warnings, cardTitle });
 
-    // 3. Voice
+    // 3. Voice (the voice director picks one when the user chose "automatic")
     await update(job, { status: "tts" });
-    const tts = await synthesize({
-      texts: blocks.map((b) => b.text),
-      voice: options.voice ?? DEFAULT_VOICES[options.language],
-      lang: options.language,
-      speed: options.speed,
-      outPath: path.join(jobDir(job.id), "voice.wav"),
-    });
+    let voice = options.voice ?? DEFAULT_VOICES[options.language];
+    if (voice === AUTO_VOICE) {
+      const choice = await span(
+        job.id,
+        "voice-casting",
+        async () => chooseVoice({ blocks, language: options.language, available: await listVoices(), fallback: DEFAULT_VOICES[options.language] }),
+        (c) => `${c.voice} · ${c.by}`,
+      );
+      if (choice.warning) warnings.push(choice.warning);
+      voice = choice.voice;
+      await update(job, { voiceChoice: { voice: choice.voice, reason: choice.reason, by: choice.by }, warnings });
+    }
+    const tts = await span(
+      job.id,
+      "tts",
+      () =>
+        synthesize({
+          texts: blocks.map((b) => b.text),
+          voice,
+          lang: options.language,
+          speed: options.speed,
+          outPath: path.join(jobDir(job.id), "voice.wav"),
+        }),
+      (t) => `${voice} · ${t.duration.toFixed(1)} s de audio · tiempos ${t.timing_source}`,
+    );
     if (tts.timing_source === "proportional") warnings.push("Word timings are estimated (speech recognizer unavailable).");
     await update(job, { tts, warnings });
 
     // 4. Composition → preview is ready
     await update(job, { status: "composing" });
-    await compose(job);
+    const renderAfter = Boolean(job.autoRender);
+    await span(job.id, "composing", () => compose(job, renderAfter ? "queued" : "ready"), () => `${job.composition?.durationInFrames ?? 0} frames`);
+    if (renderAfter) {
+      job.autoRender = false;
+      await runRender(job);
+    }
   } catch (error) {
     await fail(job, error);
   }
@@ -263,15 +340,23 @@ async function runRender(job: Job): Promise<void> {
     await update(job, { status: "rendering", progress: 0 });
     const output = path.join(jobDir(job.id), "final.mp4");
     let last = 0;
-    await renderVideo(withOrigin(job.composition, API_ORIGIN), output, (p) => {
-      // Throttle disk writes / SSE to ~1% steps.
-      if (p - last >= 0.01 || p === 1) {
-        last = p;
-        job.progress = p;
-        jobEvents.emit(job.id, publicJob(job));
-      }
-    });
-    await update(job, { status: "done", progress: 1, output: mediaUrl(job.id, "final.mp4") });
+    const composition = job.composition;
+    await span(
+      job.id,
+      "rendering",
+      () =>
+        renderVideo(withOrigin(composition, API_ORIGIN), output, (p) => {
+          // Throttle disk writes / SSE to ~1% steps.
+          if (p - last >= 0.01 || p === 1) {
+            last = p;
+            job.progress = p;
+            jobEvents.emit(job.id, publicJob(job));
+          }
+        }),
+      () => `${composition.durationInFrames} frames · ${composition.audio.durationSec.toFixed(1)} s`,
+    );
+    // The query string makes browsers fetch the new file after a re-render.
+    await update(job, { status: "done", progress: 1, output: `${mediaUrl(job.id, "final.mp4")}?v=${Date.now()}` });
   } catch (error) {
     await fail(job, error);
   }
@@ -279,7 +364,7 @@ async function runRender(job: Job): Promise<void> {
 
 export async function patchComposition(job: Job, patch: CompositionPatch): Promise<void> {
   if (!job.composition || !job.tts) throw new Error("This video has no preview yet");
-  if (job.status === "rendering" || job.status === "queued") throw new Error("Wait for the current step to finish");
+  if (isBusy(job)) throw new Error("Wait for the current step to finish");
   const options = { ...job.options, ...Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) } as JobOptions;
   const composition: VideoComposition = {
     ...job.composition,
@@ -292,7 +377,7 @@ export async function patchComposition(job: Job, patch: CompositionPatch): Promi
 }
 
 export async function deleteJob(job: Job): Promise<void> {
-  if (job.status === "rendering") throw new Error("Cannot delete while rendering");
+  if (isBusy(job)) throw new Error("Cannot delete while the video is being processed");
   jobs.delete(job.id);
   await fs.rm(jobDir(job.id), { recursive: true, force: true });
   jobEvents.emit("any", { id: job.id, deleted: true });

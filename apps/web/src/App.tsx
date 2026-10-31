@@ -3,6 +3,7 @@ import { UNAUTHORIZED_EVENT, authClient, isAdmin, type AppUser } from "./auth";
 import { CreateForm } from "./CreateForm";
 import { JobView } from "./JobView";
 import { LoginView } from "./LoginView";
+import { ObservabilityView } from "./ObservabilityView";
 import { PublicationsView } from "./PublicationsView";
 import { SettingsView } from "./SettingsView";
 import { StoriesView } from "./StoriesView";
@@ -21,12 +22,13 @@ const STATUS_LABEL: Record<Job["status"], string> = {
   failed: "Falló",
 };
 
-type Tab = "panel" | "stories" | "videos" | "publications" | "settings" | "users";
+type Tab = "panel" | "stories" | "videos" | "publications" | "observability" | "settings" | "users";
 const TABS: { id: Tab; label: string }[] = [
   { id: "panel", label: "Panel" },
   { id: "stories", label: "Historias" },
   { id: "videos", label: "Videos" },
   { id: "publications", label: "Publicaciones" },
+  { id: "observability", label: "Observabilidad" },
   { id: "settings", label: "Ajustes" },
   { id: "users", label: "Usuarios" },
 ];
@@ -206,10 +208,11 @@ function Workspace({ me, signOut }: { me: AppUser; signOut: () => void }) {
         </p>
       )}
 
-      {!pipeline && tab !== "videos" && tab !== "users" && !loadError && <p className="muted">Cargando…</p>}
+      {!pipeline && !["videos", "users", "observability"].includes(tab) && !loadError && <p className="muted">Cargando…</p>}
       {tab === "panel" && pipeline && <Dashboard pipeline={pipeline} stories={stories} pubs={pubs} go={go} />}
       {tab === "stories" && pipeline && <StoriesView pipeline={pipeline} stories={stories} refresh={refreshPipeline} openJob={openJob} />}
       {tab === "publications" && <PublicationsView pubs={pubs} refresh={refreshPipeline} openJob={openJob} />}
+      {tab === "observability" && <ObservabilityView openJob={openJob} />}
       {tab === "settings" && pipeline && options && <SettingsView pipeline={pipeline} options={options} refresh={refreshPipeline} />}
       {tab === "users" && admin && <UsersView me={me} onSelfRemoved={signOut} />}
 

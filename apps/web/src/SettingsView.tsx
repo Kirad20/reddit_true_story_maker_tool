@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { authClient } from "./auth";
 import { CAPTION_LABELS } from "./CreateForm";
 import { CredentialsSettings, ModelsSettings } from "./ModelsSettings";
+import { voiceLabel } from "./VoiceField";
 import { PLATFORMS, PLATFORM_LABEL, pipelineApi, type AccountStatus, type Genre, type Options, type Pipeline, type Platform, type Settings } from "./api";
 
 const GENRES: { id: Genre; label: string }[] = [
@@ -288,7 +289,7 @@ export function SettingsView({ pipeline, options, refresh }: { pipeline: Pipelin
         <div className="grid3">
           <label className="field">
             <span>Idioma</span>
-            <select value={s.video.language} onChange={(e) => set((d) => void ((d.video.language = e.target.value as "en" | "es"), (d.video.voice = null)))}>
+            <select value={s.video.language} onChange={(e) => set((d) => void ((d.video.language = e.target.value as "en" | "es"), (d.video.voice = d.video.voice === "auto" ? "auto" : null)))}>
               <option value="en">Inglés</option>
               <option value="es">Español (traduce con Claude)</option>
             </select>
@@ -297,9 +298,10 @@ export function SettingsView({ pipeline, options, refresh }: { pipeline: Pipelin
             <span>Voz</span>
             <select value={s.video.voice ?? ""} onChange={(e) => set((d) => void (d.video.voice = e.target.value || null))}>
               <option value="">Por defecto</option>
+              <option value="auto">🤖 Automático (el Director de voz elige según la historia)</option>
               {voices.map((v) => (
                 <option key={v} value={v}>
-                  {v}
+                  {voiceLabel(v)}
                 </option>
               ))}
             </select>

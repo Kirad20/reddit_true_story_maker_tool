@@ -143,6 +143,7 @@ export const agentsInput = z.object({
     curator: z.object({ providerId: z.string(), model: z.string().min(1).max(120), effort }),
     splitter: z.object({ providerId: z.string(), model: z.string().min(1).max(120), effort }),
     script: z.object({ providerId: z.string(), model: z.string().min(1).max(120), effort }),
+    voice: z.object({ providerId: z.string(), model: z.string().min(1).max(120), effort }),
     metadata: z.object({ providerId: z.string(), model: z.string().min(1).max(120), effort }),
   }),
 });
@@ -158,3 +159,18 @@ export const compositionPatch = z.object({
 });
 
 export type CompositionPatch = z.infer<typeof compositionPatch>;
+
+/** Settings that may change when a video is made again from scratch. */
+export const redoInput = z
+  .object({
+    scriptMode: z.enum(["literal", "claude"]).optional(),
+    language: z.enum(["en", "es"]).optional(),
+    voice: z.string().min(1).optional(),
+    speed: z.number().min(0.7).max(1.5).optional(),
+    maxDurationSec: z.number().min(15).max(180).optional(),
+    commentCount: z.number().int().min(0).max(10).optional(),
+    captionStyle: captionStyle.optional(),
+    background: backgroundChoice.optional(),
+    music: z.string().nullable().optional(),
+  })
+  .default({});

@@ -35,7 +35,17 @@ export type Job = {
   blocks: { kind: string; text: string; author?: string }[] | null;
   composition: VideoComposition | null;
   output: string | null;
+  voiceChoice?: { voice: string; reason: string; by: "agent" | "heuristic" | "default" } | null;
+  revision?: number;
 };
+
+/** Settings that can change when a video is made again from scratch. */
+export type RedoOptions = Partial<
+  Pick<JobOptions, "scriptMode" | "language" | "voice" | "speed" | "maxDurationSec" | "commentCount" | "captionStyle" | "background" | "music">
+>;
+
+/** Voice option value: the voice director picks one per story. */
+export const AUTO_VOICE = "auto";
 
 export type Options = {
   backgrounds: { name: string; clips: string[] }[];
@@ -46,6 +56,8 @@ export type Options = {
   defaultVoices: Record<"en" | "es", string>;
   captionStyles: CaptionStyle[];
   claude: boolean;
+  /** Model label of the voice director, null when it has none (heuristic pick). */
+  voiceAgent: string | null;
   reddit: boolean;
 };
 
@@ -69,6 +81,8 @@ export const api = {
     request<Job>(`/api/jobs/${id}/composition`, { method: "PATCH", body: JSON.stringify(patch) }),
   render: (id: string) => request<Job>(`/api/jobs/${id}/render`, { method: "POST" }),
   retry: (id: string) => request<Job>(`/api/jobs/${id}/retry`, { method: "POST" }),
+  redo: (id: string, options: RedoOptions = {}) => request<Job>(`/api/jobs/${id}/redo`, { method: "POST", body: JSON.stringify(options) }),
+  trace: (id: string) => request<JobTrace>(`/api/jobs/${id}/trace`),
   remove: (id: string) => request<void>(`/api/jobs/${id}`, { method: "DELETE" }),
   voicePreview: async (voice: string, lang: string, speed: number) => {
     const res = await fetch("/api/voices/preview", {
@@ -183,7 +197,7 @@ type PubEdit = Partial<Pick<Publication, "title" | "description" | "tags">>;
 
 export type ProviderKind = "anthropic" | "openai";
 export type ModelProvider = { id: string; name: string; kind: ProviderKind; baseUrl: string | null };
-export type AgentId = "writer" | "curator" | "splitter" | "script" | "metadata";
+export type AgentId = "writer" | "curator" | "splitter" | "script" | "voice" | "metadata";
 export type Effort = "low" | "medium" | "high";
 export type AgentModel = { providerId: string; model: string; effort: Effort };
 export type AIConfigView = {
@@ -216,6 +230,7 @@ export const pipelineApi = {
   approve: (id: string) => request<Story>(`/api/stories/${id}/approve`, { method: "POST" }),
   reject: (id: string) => request<Story>(`/api/stories/${id}/reject`, { method: "POST" }),
   produce: (id: string) => request<Story>(`/api/stories/${id}/produce`, { method: "POST" }),
+  redoStory: (id: string) => request<Story>(`/api/stories/${id}/redo`, { method: "POST" }),
   removeStory: (id: string) => request<void>(`/api/stories/${id}`, { method: "DELETE" }),
   publications: () => request<Publication[]>("/api/publications"),
   publishJob: (jobId: string, platforms?: Platform[]) =>
@@ -284,3 +299,70 @@ export function useJob(id: string | null, initial: Job | null): Job | null {
   }, [id]);
   return job;
 }
+
+// ---------------------------------------------------------------- observability
+
+export type TokenUsage = { input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number };
+export type TraceContext = { jobId?: string; storyId?: string; trigger?: string };
+
+export type LlmCallSummary = {
+  id: string;
+  at: string;
+  agent: string;
+  provider: string;
+  providerKind: ProviderKind;
+  model: string;
+  servedModel: string | null;
+  effort: string;
+  mode: string;
+  durationMs: number;
+  ok: boolean;
+  error: string | null;
+  stopReason: string | null;
+  usage: TokenUsage;
+  costUsd: number | null;
+  context: TraceContext;
+};
+export type LlmCall = LlmCallSummary & { system: string; prompt: string; response: string | null };
+
+export type StepSpan = {
+  id: string;
+  at: string;
+  jobId: string;
+  step: string;
+  durationMs: number;
+  ok: boolean;
+  error: string | null;
+  detail: string | null;
+  context: TraceContext;
+};
+
+export type AuditEntry = { id: string; at: string; user: string | null; action: string; target: string | null; status: number; durationMs: number };
+
+export type Bucket = { calls: number; errors: number; usage: TokenUsage; costUsd: number; unpriced: number; durationMs: number };
+
+export type FlowStage = { id: string; label: string; agent: string | null; step: string | null; where: string; description: string };
+
+export type Observability = {
+  range: string;
+  total: Bucket;
+  byAgent: Record<string, Bucket>;
+  byModel: Record<string, Bucket>;
+  byDay: (Bucket & { day: string })[];
+  steps: Record<string, { runs: number; failures: number; totalMs: number; maxMs: number }>;
+  perJob: Record<string, { calls: number; costUsd: number; tokens: number }>;
+  recentCalls: LlmCallSummary[];
+  recentSteps: StepSpan[];
+  audit: AuditEntry[];
+  agents: { id: AgentId; label: string; description: string; model: string | null }[];
+  flow: { pipeline: FlowStage[]; video: FlowStage[]; publishing: FlowStage[] };
+  queue: { id: string; status: JobStatus; progress: number; title: string | null }[];
+  pipeline: Pipeline["status"];
+};
+
+export type JobTrace = { steps: StepSpan[]; calls: LlmCallSummary[] };
+
+export const observabilityApi = {
+  get: (range: string) => request<Observability>(`/api/observability?range=${encodeURIComponent(range)}`),
+  call: (id: string) => request<LlmCall>(`/api/observability/calls/${id}`),
+};

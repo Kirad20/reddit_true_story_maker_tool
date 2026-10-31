@@ -27,7 +27,7 @@ en `data/ai.json` y `data/secrets.json` (fuera de git); la interfaz nunca recibe
 queda solo para puertos y servicios locales (ver `.env.example`).
 
 - **Modelos de IA**: agrega proveedores y elige un modelo por agente (Escritor, Curador, Divisor en partes,
-  Guion y traducción, Publicación), cada uno con su nivel de esfuerzo.
+  Guion y traducción, Director de voz, Publicación), cada uno con su nivel de esfuerzo.
   - *Anthropic (oficial)*: tu API key; modelo por defecto `claude-opus-5-5`.
   - *teamsoclo · Claude*: protocolo Anthropic, URL `https://gpt.teamsoclo.site` (sin `/v1`). En pasarelas no se
     envían funciones beta y, si no aceptan salida estructurada, se pide el JSON en el prompt.
@@ -81,7 +81,7 @@ bloquearlos o borrarlos. No hay registro público.
 
 ## Pipeline automático
 
-Pestañas **Panel → Historias → Videos → Publicaciones → Ajustes** (y **Usuarios** para administradores):
+Pestañas **Panel → Historias → Videos → Publicaciones → Observabilidad → Ajustes** (y **Usuarios** para administradores):
 
 1. **Descubrir**: el agente escribe historias **originales** (ficción en estilo Reddit, por géneros) con Claude.
    Si Reddit te aprueba acceso a su API, también puede traer posts top de subreddits por la API oficial.
@@ -94,6 +94,37 @@ Pestañas **Panel → Historias → Videos → Publicaciones → Ajustes** (y **
    un máximo diario por plataforma, reintentando fallos temporales.
 
 Activa el **piloto automático** en Ajustes para que el ciclo corra cada N minutos. Todo queda en `data/`.
+
+### Voz automática
+
+En la voz elige **🤖 Automático** (al crear un video, al rehacerlo o en Ajustes → Video para el pipeline). El
+**Director de voz** lee la historia, deduce si el narrador es hombre o mujer y el tono (terror, comedia, drama…) y
+elige una voz del catálogo de Kokoro para ese idioma. Sin modelo configurado usa pistas del texto ("my husband",
+"mi esposa"…). El video muestra qué voz se eligió y por qué.
+
+### Rehacer un video
+
+En la vista del video, **↻ Rehacer video** vuelve a procesar todo desde la fuente (guion, voz, composición) y
+permite cambiar guion, idioma, voz, velocidad y duración. Si el video ya tenía MP4, se vuelve a renderizar al
+terminar. **Volver a renderizar** solo regenera el MP4 con el mismo guion y voz. En Historias, **↻ Rehacer video**
+rehace los videos de una historia (completo y partes) manteniendo sus publicaciones.
+
+### Observabilidad y auditoría
+
+La pestaña **Observabilidad** muestra cómo funciona el proyecto por dentro:
+
+- **Resumen**: llamadas a modelos, tokens (entrada, salida, caché), costo estimado, errores y latencia por agente,
+  por modelo, por día y por video.
+- **Llamadas a agentes**: cada llamada con agente, modelo pedido y modelo que respondió, proveedor, esfuerzo,
+  tokens, latencia, costo y origen (video, historia o ciclo automático); "Ver" abre el system prompt, el prompt y la
+  respuesta.
+- **Pasos del pipeline**: duración y fallos de fuente, guion, elección de voz, TTS, composición y render.
+- **Auditoría**: cada cambio hecho por la API, con usuario, acción, objeto y resultado.
+- **Cómo funciona**: el mapa del pipeline con el agente y el archivo de código de cada etapa.
+
+Cada video tiene además su **traza interna** (pasos y llamadas en orden). Los registros se guardan en
+`data/telemetry/*.jsonl`. El costo es una estimación con los precios públicos de Claude; modelos sin precio
+conocido (p. ej. GPT en pasarelas) muestran "—".
 
 ## Publicar en YouTube, TikTok y Facebook
 

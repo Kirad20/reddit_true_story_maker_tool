@@ -14,12 +14,13 @@ export type ModelProvider = {
   baseUrl: string | null;
 };
 
-export type AgentId = "writer" | "curator" | "splitter" | "script" | "metadata";
+export type AgentId = "writer" | "curator" | "splitter" | "script" | "voice" | "metadata";
 export const AGENTS: { id: AgentId; label: string; description: string }[] = [
   { id: "writer", label: "Escritor", description: "Escribe las historias originales" },
   { id: "curator", label: "Curador", description: "Puntúa y filtra historias" },
   { id: "splitter", label: "Divisor en partes", description: "Decide si y dónde cortar para TikTok/Facebook" },
   { id: "script", label: "Guion y traducción", description: "Reescribe el guion y traduce al español" },
+  { id: "voice", label: "Director de voz", description: "Elige la voz que mejor encaja con cada historia (voz automática)" },
   { id: "metadata", label: "Publicación", description: "Títulos, descripciones y hashtags" },
 ];
 
@@ -36,7 +37,7 @@ const agent = (effort: Effort): AgentModel => ({ providerId: "anthropic", model:
 
 export const DEFAULT_AI: AIConfig = {
   providers: [DEFAULT_PROVIDER],
-  agents: { writer: agent("medium"), curator: agent("low"), splitter: agent("low"), script: agent("low"), metadata: agent("low") },
+  agents: { writer: agent("medium"), curator: agent("low"), splitter: agent("low"), script: agent("low"), voice: agent("low"), metadata: agent("low") },
 };
 
 export const aiConfig = new Doc<AIConfig>("ai", DEFAULT_AI);
