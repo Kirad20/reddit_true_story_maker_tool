@@ -158,6 +158,20 @@ Si venías de una versión anterior, vuelve a conectar las cuentas (cambió el r
 
 Los videos se marcan como contenido generado con IA (`containsSyntheticMedia` en YouTube, `is_aigc` en TikTok).
 
+### Términos y privacidad (páginas públicas)
+
+Google, TikTok y Meta piden una URL de **términos del servicio** y otra de **política de privacidad** al registrar la
+app. La API las sirve sin necesidad de iniciar sesión, en español e inglés:
+
+| Página | URL | Alias |
+| --- | --- | --- |
+| Términos del servicio | `https://tu-dominio/terms` | `/terminos` |
+| Política de privacidad | `https://tu-dominio/privacy` | `/privacidad` |
+
+Define `LEGAL_OPERATOR` (tu nombre o empresa) y `LEGAL_CONTACT_EMAIL` (contacto para solicitudes de privacidad y
+borrado de datos) en `.env` o en las variables de Coolify. El texto está en `apps/api/src/legal.ts`; revísalo y
+adáptalo a tu caso (no es asesoría legal).
+
 ### Monetización
 
 - Las plataformas desmonetizan contenido "reutilizado" o repetitivo. Las historias originales, voces y
