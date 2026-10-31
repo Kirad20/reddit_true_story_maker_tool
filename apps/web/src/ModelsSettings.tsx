@@ -88,8 +88,10 @@ export function ModelsSettings({ onSaved }: { onSaved: () => void }) {
     run(
       () =>
         configApi.saveProviders(
-          providers.map(({ keyMask: _m, key, apiKey, ...p }) => ({
+          providers.map(({ keyMask: _m, key, apiKey, id, ...p }) => ({
             ...p,
+            // New providers have no id yet: the server assigns one.
+            ...(id ? { id } : {}),
             baseUrl: p.baseUrl?.trim() ? p.baseUrl.trim() : null,
             apiKey: key ? key : apiKey === "" ? "" : undefined,
           })),

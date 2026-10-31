@@ -212,10 +212,12 @@ export type AIConfigView = {
 };
 /** apiKey: undefined keeps the stored key, "" removes it. */
 export type ProviderInput = ModelProvider & { apiKey?: string | null };
+/** What is saved: new providers go without an id (the server assigns it). */
+export type ProviderSave = Omit<ProviderInput, "id"> & { id?: string };
 
 export const configApi = {
   get: () => request<AIConfigView>("/api/config"),
-  saveProviders: (providers: ProviderInput[]) => request<AIConfigView>("/api/config/providers", { method: "PUT", body: JSON.stringify({ providers }) }),
+  saveProviders: (providers: ProviderSave[]) => request<AIConfigView>("/api/config/providers", { method: "PUT", body: JSON.stringify({ providers }) }),
   saveAgents: (agents: Record<AgentId, AgentModel>) => request<AIConfigView>("/api/config/agents", { method: "PUT", body: JSON.stringify({ agents }) }),
   saveCredentials: (values: Record<string, string | null>) =>
     request<AIConfigView>("/api/config/credentials", { method: "PUT", body: JSON.stringify(values) }),
