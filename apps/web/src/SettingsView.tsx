@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { authClient } from "./auth";
 import { CAPTION_LABELS } from "./CreateForm";
+import { ListInput, NumberInput } from "./Fields";
 import { CredentialsSettings, ModelsSettings } from "./ModelsSettings";
 import { voiceLabel } from "./VoiceField";
 import { PLATFORMS, PLATFORM_LABEL, pipelineApi, type AccountStatus, type Genre, type Options, type Pipeline, type Platform, type Settings, type Timeframe } from "./api";
@@ -13,12 +14,6 @@ const TIMEFRAMES: { id: Timeframe; label: string }[] = [
   { id: "year", label: "Este año" },
   { id: "all", label: "Todos los tiempos" },
 ];
-
-const parseSubreddits = (text: string) =>
-  text
-    .split(/[,\s]+/)
-    .map((x) => x.trim().replace(/^\/?r\//i, ""))
-    .filter(Boolean);
 
 const GENRES: { id: Genre; label: string }[] = [
   { id: "aita", label: "¿Soy el malo? (AITA)" },
@@ -123,11 +118,9 @@ export function SettingsView({ pipeline, options, refresh }: { pipeline: Pipelin
   // The pipeline snapshot is refetched on every server event: only take it while there are no
   // unsaved edits, otherwise a background refresh would wipe what the user is typing.
   const dirty = useRef(false);
-  const [subredditsText, setSubredditsText] = useState(pipeline.settings.sources.reddit.subreddits.join(", "));
   useEffect(() => {
     if (dirty.current) return;
     setS(pipeline.settings);
-    setSubredditsText(pipeline.settings.sources.reddit.subreddits.join(", "));
   }, [pipeline.settings]);
 
   const set = (fn: (draft: Settings) => void) => {
@@ -147,7 +140,6 @@ export function SettingsView({ pipeline, options, refresh }: { pipeline: Pipelin
       const saved = await pipelineApi.saveSettings(s);
       dirty.current = false;
       setS(saved);
-      setSubredditsText(saved.sources.reddit.subreddits.join(", "));
       setMessage("Ajustes guardados");
       refresh();
     } catch (e) {
@@ -199,11 +191,11 @@ export function SettingsView({ pipeline, options, refresh }: { pipeline: Pipelin
         <div className="grid3">
           <label className="field">
             <span>Cada (minutos)</span>
-            <input type="number" min={5} value={s.automation.intervalMinutes} onChange={(e) => set((d) => void (d.automation.intervalMinutes = Number(e.target.value)))} />
+            <NumberInput min={5} value={s.automation.intervalMinutes} onChange={(n) => set((d) => void (d.automation.intervalMinutes = n))} />
           </label>
           <label className="field">
             <span>Historias aprobadas en reserva</span>
-            <input type="number" min={1} max={20} value={s.automation.targetBacklog} onChange={(e) => set((d) => void (d.automation.targetBacklog = Number(e.target.value)))} />
+            <NumberInput min={1} max={20} value={s.automation.targetBacklog} onChange={(n) => set((d) => void (d.automation.targetBacklog = n))} />
           </label>
         </div>
         <button className="ghost" onClick={() => pipelineApi.run().then(() => setMessage("Ciclo iniciado"))}>
@@ -240,7 +232,7 @@ export function SettingsView({ pipeline, options, refresh }: { pipeline: Pipelin
         </div>
         <label className="field narrow">
           <span>Historias por búsqueda</span>
-          <input type="number" min={1} max={10} value={s.sources.original.perRun} onChange={(e) => set((d) => void (d.sources.original.perRun = Number(e.target.value)))} />
+          <NumberInput min={1} max={10} value={s.sources.original.perRun} onChange={(n) => set((d) => void (d.sources.original.perRun = n))} />
         </label>
 
         <Toggle
@@ -259,20 +251,17 @@ export function SettingsView({ pipeline, options, refresh }: { pipeline: Pipelin
         <div className="grid3">
           <label className="field">
             <span>Subreddits (separados por coma)</span>
-            <input
+            <ListInput
               placeholder="AmItheAsshole, tifu, pettyrevenge"
-              value={subredditsText}
-              onChange={(e) => {
-                setSubredditsText(e.target.value);
-                const list = parseSubreddits(e.target.value);
-                set((d) => void (d.sources.reddit.subreddits = list));
-              }}
-              onBlur={() => setSubredditsText(s.sources.reddit.subreddits.join(", "))}
+              value={s.sources.reddit.subreddits}
+              separator={/[,\s]+/}
+              normalize={(x) => x.trim().replace(/^\/?r\//i, "")}
+              onChange={(list) => set((d) => void (d.sources.reddit.subreddits = list))}
             />
           </label>
           <label className="field">
             <span>Votos mínimos</span>
-            <input type="number" min={0} value={s.sources.reddit.minScore} onChange={(e) => set((d) => void (d.sources.reddit.minScore = Number(e.target.value)))} />
+            <NumberInput min={0} value={s.sources.reddit.minScore} onChange={(n) => set((d) => void (d.sources.reddit.minScore = n))} />
           </label>
           <label className="field">
             <span>Periodo</span>
@@ -294,7 +283,7 @@ export function SettingsView({ pipeline, options, refresh }: { pipeline: Pipelin
         />
         <label className="field narrow">
           <span>Puntaje mínimo (1-10)</span>
-          <input type="number" min={1} max={10} value={s.curation.minScore} onChange={(e) => set((d) => void (d.curation.minScore = Number(e.target.value)))} />
+          <NumberInput min={1} max={10} value={s.curation.minScore} onChange={(n) => set((d) => void (d.curation.minScore = n))} />
         </label>
       </section>
 
@@ -312,11 +301,11 @@ export function SettingsView({ pipeline, options, refresh }: { pipeline: Pipelin
         <div className="grid3">
           <label className="field">
             <span>Dividir si dura más de (s)</span>
-            <input type="number" min={30} max={600} value={s.parts.splitAboveSec} onChange={(e) => set((d) => void (d.parts.splitAboveSec = Number(e.target.value)))} />
+            <NumberInput min={30} max={600} value={s.parts.splitAboveSec} onChange={(n) => set((d) => void (d.parts.splitAboveSec = n))} />
           </label>
           <label className="field">
             <span>Duración mínima por parte (s)</span>
-            <input type="number" min={15} max={120} value={s.parts.minPartSec} onChange={(e) => set((d) => void (d.parts.minPartSec = Number(e.target.value)))} />
+            <NumberInput min={15} max={120} value={s.parts.minPartSec} onChange={(n) => set((d) => void (d.parts.minPartSec = n))} />
           </label>
           <label className="field">
             <span>Máximo de partes</span>
@@ -403,11 +392,11 @@ export function SettingsView({ pipeline, options, refresh }: { pipeline: Pipelin
           </label>
           <label className="field">
             <span>Duración máxima (s)</span>
-            <input type="number" min={15} max={180} value={s.video.maxDurationSec} onChange={(e) => set((d) => void (d.video.maxDurationSec = Number(e.target.value)))} />
+            <NumberInput min={15} max={180} value={s.video.maxDurationSec} onChange={(n) => set((d) => void (d.video.maxDurationSec = n))} />
           </label>
           <label className="field">
             <span>Comentarios por video</span>
-            <input type="number" min={0} max={5} value={s.video.commentCount} onChange={(e) => set((d) => void (d.video.commentCount = Number(e.target.value)))} />
+            <NumberInput min={0} max={5} value={s.video.commentCount} onChange={(n) => set((d) => void (d.video.commentCount = n))} />
           </label>
         </div>
       </section>
@@ -422,19 +411,20 @@ export function SettingsView({ pipeline, options, refresh }: { pipeline: Pipelin
         <div className="grid3">
           <label className="field">
             <span>Horarios (HH:MM, separados por coma)</span>
-            <input
-              value={s.publish.slots.join(", ")}
-              onChange={(e) => set((d) => void (d.publish.slots = e.target.value.split(",").map((x) => x.trim()).filter(Boolean)))}
+            <ListInput
+              placeholder="12:00, 18:00, 21:00"
+              value={s.publish.slots}
+              separator={/[,\s]+/}
+              onChange={(list) => set((d) => void (d.publish.slots = list))}
             />
           </label>
           <label className="field">
             <span>Máximo por día y plataforma</span>
-            <input
-              type="number"
+            <NumberInput
               min={1}
               max={20}
               value={s.publish.dailyLimitPerPlatform}
-              onChange={(e) => set((d) => void (d.publish.dailyLimitPerPlatform = Number(e.target.value)))}
+              onChange={(n) => set((d) => void (d.publish.dailyLimitPerPlatform = n))}
             />
           </label>
         </div>

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { BackgroundPicker } from "./BackgroundPicker";
+import { NumberInput } from "./Fields";
 import { AUTO_VOICE, api, type BackgroundChoice, type Job, type JobOptions, type Options } from "./api";
 import { VoiceField, voicesForLanguage } from "./VoiceField";
 
@@ -99,7 +100,7 @@ export function CreateForm({ options, onCreated }: { options: Options; onCreated
         {sourceType === "url" && (
           <label className="field">
             <span>Comentarios a incluir</span>
-            <input type="number" min={0} max={10} value={commentCount} onChange={(e) => setCommentCount(Number(e.target.value))} />
+            <NumberInput min={0} max={10} value={commentCount} onChange={setCommentCount} />
           </label>
         )}
         <label className="field">

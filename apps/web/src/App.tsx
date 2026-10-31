@@ -103,6 +103,12 @@ function Dashboard({ pipeline, stories, pubs, go }: { pipeline: Pipeline; storie
 /** Login gate: the workspace only mounts with a valid session. */
 export function App() {
   const { data, isPending, refetch } = authClient.useSession();
+  // Only the very first session check shows "Cargando…". Later checks (after a sign-in attempt, on
+  // window focus) must not unmount the login form, or what was typed and its error message are lost.
+  const [checked, setChecked] = useState(false);
+  useEffect(() => {
+    if (!isPending) setChecked(true);
+  }, [isPending]);
 
   useEffect(() => {
     const onUnauthorized = () => void refetch();
@@ -110,7 +116,7 @@ export function App() {
     return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
   }, [refetch]);
 
-  if (isPending && !data) return <p className="muted app">Cargando…</p>;
+  if (isPending && !data && !checked) return <p className="muted app">Cargando…</p>;
   if (!data) return <LoginView onSignedIn={() => void refetch()} />;
   const me = data.user as AppUser;
   return <Workspace key={me.id} me={me} signOut={() => authClient.signOut().then(() => refetch())} />;
