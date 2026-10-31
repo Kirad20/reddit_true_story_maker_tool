@@ -139,6 +139,33 @@ export type Publication = {
   error: string | null;
   attempts: number;
   part?: { index: number; total: number } | null;
+  tiktok?: TikTokPostOptions | null;
+};
+
+export type TikTokPrivacy = "SELF_ONLY" | "MUTUAL_FOLLOW_FRIENDS" | "FOLLOWER_OF_CREATOR" | "PUBLIC_TO_EVERYONE";
+
+export type TikTokPostOptions = {
+  privacy: TikTokPrivacy;
+  allowComment: boolean;
+  allowDuet: boolean;
+  allowStitch: boolean;
+  brandOrganic: boolean;
+  brandedContent: boolean;
+};
+
+export type TikTokComposerData = {
+  creator: {
+    nickname: string;
+    username: string | null;
+    avatarUrl: string | null;
+    privacyOptions: TikTokPrivacy[];
+    commentDisabled: boolean;
+    duetDisabled: boolean;
+    stitchDisabled: boolean;
+    maxVideoPostDurationSec: number | null;
+  };
+  videoUrl: string | null;
+  videoDurationSec: number | null;
 };
 
 export type Genre = "aita" | "tifu" | "revenge" | "relationship" | "workplace" | "creepy" | "wholesome";
@@ -168,7 +195,7 @@ export type Settings = {
     dailyLimitPerPlatform: number;
     platforms: {
       youtube: { enabled: boolean; privacy: "private" | "unlisted" | "public" };
-      tiktok: { enabled: boolean; privacy: "SELF_ONLY" | "MUTUAL_FOLLOW_FRIENDS" | "FOLLOWER_OF_CREATOR" | "PUBLIC_TO_EVERYONE" };
+      tiktok: { enabled: boolean; privacy: TikTokPrivacy; reviewDemo: boolean };
       facebook: { enabled: boolean };
     };
   };
@@ -243,6 +270,9 @@ export const pipelineApi = {
   editPublication: (id: string, edit: PubEdit) => request<Publication>(`/api/publications/${id}`, { method: "PATCH", body: JSON.stringify(edit) }),
   approvePublication: (id: string, edit?: PubEdit) =>
     request<Publication>(`/api/publications/${id}/approve`, { method: "POST", body: JSON.stringify(edit ?? {}) }),
+  tiktokComposer: (id: string) => request<TikTokComposerData>(`/api/publications/${id}/tiktok`),
+  publishToTikTok: (id: string, input: TikTokPostOptions & { title: string; consent: true }) =>
+    request<Publication>(`/api/publications/${id}/tiktok/publish`, { method: "POST", body: JSON.stringify(input) }),
   publishNow: (id: string) => request<Publication>(`/api/publications/${id}/publish-now`, { method: "POST" }),
   cancelPublication: (id: string) => request<Publication>(`/api/publications/${id}/cancel`, { method: "POST" }),
   disconnect: (p: Platform) => request<AccountStatus[]>(`/api/auth/${p}/disconnect`, { method: "POST" }),

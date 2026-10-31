@@ -262,3 +262,19 @@ pre.code { background: var(--bg); border: 1px solid var(--line); border-radius: 
 .flow .stage p { margin: 0; }
 .flow .stage code { align-self: flex-start; word-break: break-all; }
 .warn-inline { color: var(--warn); }
+
+/* TikTok Direct Post screen (TikTok review flow) */
+.card.composing { grid-column: 1 / -1; }
+.tt-composer { border: 1px solid var(--line); background: var(--panel); border-radius: 12px; padding: 14px; margin: 8px 0; }
+.tt-composer h4 { margin: 0 0 10px; }
+.tt-grid { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 640px) { .tt-grid { grid-template-columns: 1fr; } }
+.tt-preview { width: 100%; aspect-ratio: 9 / 16; background: #000; border-radius: 10px; }
+.tt-form { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.tt-creator { display: flex; gap: 10px; align-items: center; }
+.tt-creator img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
+.tt-creator div { display: flex; flex-direction: column; }
+.tt-set { border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px 10px; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.tt-set legend { color: var(--muted); font-size: 13px; padding: 0 4px; }
+.tt-sub { display: flex; flex-direction: column; gap: 6px; padding-left: 22px; }
+.toggle.disabled { opacity: 0.45; }

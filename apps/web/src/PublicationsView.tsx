@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { PLATFORM_LABEL, pipelineApi, type Publication } from "./api";
+import { TikTokComposer } from "./TikTokComposer";
 
 const STATUS: Record<Publication["status"], string> = {
   needs_review: "Revisar",
@@ -12,8 +13,21 @@ const STATUS: Record<Publication["status"], string> = {
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : "—");
 
-function PublicationCard({ pub, refresh, openJob }: { pub: Publication; refresh: () => void; openJob: (id: string) => void }) {
+function PublicationCard({
+  pub,
+  refresh,
+  openJob,
+  tiktokReview,
+}: {
+  pub: Publication;
+  refresh: () => void;
+  openJob: (id: string) => void;
+  tiktokReview: boolean;
+}) {
   const [editing, setEditing] = useState(false);
+  const [composing, setComposing] = useState(false);
+  // Feature flag: TikTok posts go only through the Direct Post screen (TikTok app review).
+  const directPost = tiktokReview && pub.platform === "tiktok";
   const [title, setTitle] = useState(pub.title);
   const [description, setDescription] = useState(pub.description);
   const [busy, setBusy] = useState(false);
@@ -35,7 +49,7 @@ function PublicationCard({ pub, refresh, openJob }: { pub: Publication; refresh:
   }
 
   return (
-    <li className="card">
+    <li className={`card ${composing ? "composing" : ""}`}>
       <div className="card-head">
         <span className={`platform ${pub.platform}`}>{PLATFORM_LABEL[pub.platform]}</span>
         {pub.part && (
@@ -67,11 +81,17 @@ function PublicationCard({ pub, refresh, openJob }: { pub: Publication; refresh:
         </a>
       )}
       {error && <p className="error small">{error}</p>}
+      {composing && <TikTokComposer pub={pub} onClose={() => setComposing(false)} onPosted={refresh} />}
       <div className="actions">
         <button className="ghost" onClick={() => openJob(pub.jobId)}>
           Ver video
         </button>
-        {open && !editing && (
+        {directPost && open && pub.status !== "canceled" && !composing && (
+          <button className="primary" onClick={() => setComposing(true)}>
+            Post to TikTok
+          </button>
+        )}
+        {open && !editing && !directPost && (
           <button className="ghost" disabled={busy} onClick={() => setEditing(true)}>
             Editar texto
           </button>
@@ -81,12 +101,12 @@ function PublicationCard({ pub, refresh, openJob }: { pub: Publication; refresh:
             Guardar
           </button>
         )}
-        {["needs_review", "failed", "canceled"].includes(pub.status) && (
+        {!directPost && ["needs_review", "failed", "canceled"].includes(pub.status) && (
           <button className="ghost" disabled={busy} onClick={() => act(() => pipelineApi.approvePublication(pub.id, editing ? { title, description } : undefined))}>
             ✓ Aprobar y programar
           </button>
         )}
-        {open && pub.status !== "canceled" && (
+        {!directPost && open && pub.status !== "canceled" && (
           <button className="ghost" disabled={busy} onClick={() => act(() => pipelineApi.publishNow(pub.id))}>
             Publicar ya
           </button>
@@ -101,7 +121,17 @@ function PublicationCard({ pub, refresh, openJob }: { pub: Publication; refresh:
   );
 }
 
-export function PublicationsView({ pubs, refresh, openJob }: { pubs: Publication[]; refresh: () => void; openJob: (id: string) => void }) {
+export function PublicationsView({
+  pubs,
+  refresh,
+  openJob,
+  tiktokReview = false,
+}: {
+  pubs: Publication[];
+  refresh: () => void;
+  openJob: (id: string) => void;
+  tiktokReview?: boolean;
+}) {
   const [filter, setFilter] = useState<"open" | "published" | "all">("open");
   const shown = pubs.filter((p) =>
     filter === "open" ? ["needs_review", "scheduled", "publishing", "failed"].includes(p.status) : filter === "published" ? p.status === "published" : true,
@@ -127,7 +157,7 @@ export function PublicationsView({ pubs, refresh, openJob }: { pubs: Publication
       {shown.length === 0 && <p className="muted">Nada por aquí todavía.</p>}
       <ul className="cards">
         {shown.map((p) => (
-          <PublicationCard key={`${p.id}-${p.status}-${p.title}`} pub={p} refresh={refresh} openJob={openJob} />
+          <PublicationCard key={`${p.id}-${p.status}-${p.title}`} pub={p} refresh={refresh} openJob={openJob} tiktokReview={tiktokReview} />
         ))}
       </ul>
     </section>

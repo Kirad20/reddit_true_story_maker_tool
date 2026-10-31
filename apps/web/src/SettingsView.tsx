@@ -470,6 +470,11 @@ export function SettingsView({ pipeline, options, refresh }: { pipeline: Pipelin
             </div>
           ))}
         </div>
+        <Toggle
+          checked={s.publish.platforms.tiktok.reviewDemo ?? false}
+          onChange={(v) => set((d) => void (d.publish.platforms.tiktok.reviewDemo = v))}
+          label="Modo revisión TikTok (demo para la auditoría): cada video de TikTok espera a que lo publiques desde la pantalla Direct Post"
+        />
         <p className="hint">
           Los videos se marcan como contenido generado con IA en cada plataforma. Publicar muchos videos casi idénticos puede afectar la
           monetización: varía géneros, voces y fondos.

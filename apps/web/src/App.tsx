@@ -211,7 +211,7 @@ function Workspace({ me, signOut }: { me: AppUser; signOut: () => void }) {
       {!pipeline && !["videos", "users", "observability"].includes(tab) && !loadError && <p className="muted">Cargando…</p>}
       {tab === "panel" && pipeline && <Dashboard pipeline={pipeline} stories={stories} pubs={pubs} go={go} />}
       {tab === "stories" && pipeline && <StoriesView pipeline={pipeline} stories={stories} refresh={refreshPipeline} openJob={openJob} />}
-      {tab === "publications" && <PublicationsView pubs={pubs} refresh={refreshPipeline} openJob={openJob} />}
+      {tab === "publications" && <PublicationsView pubs={pubs} refresh={refreshPipeline} openJob={openJob} tiktokReview={Boolean(pipeline?.settings.publish.platforms.tiktok.reviewDemo)} />}
       {tab === "observability" && <ObservabilityView openJob={openJob} />}
       {tab === "settings" && pipeline && options && <SettingsView pipeline={pipeline} options={options} refresh={refreshPipeline} />}
       {tab === "users" && admin && <UsersView me={me} onSelfRemoved={signOut} />}

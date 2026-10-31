@@ -36,6 +36,8 @@ import {
 import {
   activityLog,
   approvePublication,
+  publishToTikTok,
+  videoDurationSec,
   cancelPublication,
   curate,
   discover,
@@ -53,6 +55,7 @@ import {
 import { PLATFORMS, loadDomain, publications, settings, stories, storyJobIds, type Platform, type Settings } from "./domain";
 import { accountStatuses, facebook, loadAccounts, onPlatformLinked, publishers } from "./publish";
 import { accounts } from "./publish/accounts";
+import { tiktokCreatorInfo } from "./publish/tiktok";
 import { hasRedditAccess } from "./reddit";
 import {
   agentsInput,
@@ -62,6 +65,7 @@ import {
   manualStoryInput,
   providersInput,
   publicationEdit,
+  tiktokPostInput,
   redoInput,
   settingsSchema,
 } from "./schema";
@@ -420,6 +424,31 @@ app.post(
   "/api/publications/:id/approve",
   route(async (req, res) => {
     res.json(await approvePublication(String(req.params.id), publicationEdit.parse(req.body ?? {})));
+  }),
+);
+
+// TikTok review flow (feature flag Ajustes → Publicar → "Modo revisión TikTok"): the Direct Post screen.
+app.get(
+  "/api/publications/:id/tiktok",
+  route(async (req, res) => {
+    const pub = publications.get(String(req.params.id));
+    if (!pub || pub.platform !== "tiktok") {
+      res.status(404).json({ error: "TikTok publication not found" });
+      return;
+    }
+    res.json({
+      creator: await tiktokCreatorInfo(),
+      videoUrl: getJob(pub.jobId)?.output ?? null,
+      videoDurationSec: videoDurationSec(pub.jobId),
+    });
+  }),
+);
+
+app.post(
+  "/api/publications/:id/tiktok/publish",
+  route(async (req, res) => {
+    const { consent: _consent, ...input } = tiktokPostInput.parse(req.body);
+    res.json(await publishToTikTok(String(req.params.id), input));
   }),
 );
 
