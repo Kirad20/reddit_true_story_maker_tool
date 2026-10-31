@@ -49,6 +49,9 @@ export const AUTO_VOICE = "auto";
 
 export type Options = {
   backgrounds: { name: string; clips: string[] }[];
+  /** Where backgrounds and music come from: the local assets/ folder or an S3 bucket (SeaweedFS…). */
+  assetStorage: "local" | "s3";
+  assetsError: string | null;
   procedural: ("sunset" | "ocean" | "neon")[];
   music: string[];
   voices: string[];

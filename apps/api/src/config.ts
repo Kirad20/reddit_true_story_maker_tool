@@ -10,6 +10,29 @@ export const DATA_DIR = process.env.TSM_DATA_DIR ?? path.join(ROOT_DIR, "data");
 export const ASSETS_DIR = path.join(ROOT_DIR, "assets");
 export const BACKGROUNDS_DIR = path.join(ASSETS_DIR, "backgrounds");
 export const MUSIC_DIR = path.join(ASSETS_DIR, "music");
+/**
+ * Backgrounds and music can live in an S3-compatible bucket (SeaweedFS, MinIO, AWS…) instead of assets/.
+ * Enabled when S3_BUCKET is set; keys are stored under S3_PREFIX + "backgrounds/<category>/<file>" and
+ * S3_PREFIX + "music/<file>", the same layout as the local folder.
+ */
+export const S3_ASSETS = process.env.S3_BUCKET
+  ? {
+      bucket: process.env.S3_BUCKET,
+      endpoint: process.env.S3_ENDPOINT || undefined,
+      region: process.env.S3_REGION || "us-east-1",
+      accessKeyId: process.env.S3_ACCESS_KEY_ID || undefined,
+      secretAccessKey: process.env.S3_SECRET_ACCESS_KEY || undefined,
+      prefix: normalizePrefix(process.env.S3_PREFIX ?? ""),
+      // SeaweedFS and MinIO need path-style URLs (http://host:8333/bucket/key).
+      forcePathStyle: process.env.S3_FORCE_PATH_STYLE !== "false",
+    }
+  : null;
+export type S3AssetsConfig = NonNullable<typeof S3_ASSETS>;
+
+function normalizePrefix(prefix: string): string {
+  const trimmed = prefix.replace(/^\/+|\/+$/g, "");
+  return trimmed ? `${trimmed}/` : "";
+}
 export const VIDEO_ENTRY = path.join(ROOT_DIR, "packages/video/src/index.ts");
 
 export const IS_PRODUCTION = process.env.NODE_ENV === "production";

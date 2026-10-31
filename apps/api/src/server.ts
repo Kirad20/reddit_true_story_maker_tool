@@ -1,6 +1,6 @@
 import express, { type NextFunction, type Request, type Response } from "express";
 import { ZodError } from "zod";
-import { PROCEDURAL_PRESETS, listBackgrounds, listMusic } from "./assets";
+import { PROCEDURAL_PRESETS, assetStore, listBackgrounds, listMusic } from "./assets";
 import { AGENTS, CREDENTIALS, reconcileAgents, agentLabel, agentReady, aiConfig, loadAIConfig, mask, newProviderId, secret, setSecrets } from "./aiconfig";
 import fs from "node:fs";
 import path from "node:path";
@@ -69,7 +69,16 @@ import type { SessionUser } from "./auth";
 import { getLlmCall, jobTrace, loadTelemetry, recordAudit, telemetryEvents, telemetrySummary, withTrace } from "./telemetry";
 import { AGENT_FLOW } from "./architecture";
 
-reportOrExit([...checkEnvironment(process.env), ...(await checkWritable([DATA_DIR, JOBS_DIR, ASSETS_DIR]))]);
+const assets = assetStore();
+reportOrExit([
+  ...checkEnvironment(process.env),
+  ...(await checkWritable(assets.kind === "local" ? [DATA_DIR, JOBS_DIR, ASSETS_DIR] : [DATA_DIR, JOBS_DIR])),
+]);
+if (assets.kind === "s3") {
+  // Not fatal: the app works with animated backgrounds while the bucket is down; /api/ready reports it.
+  const problem = await assets.check();
+  console[problem ? "warn" : "log"](`[assets] backgrounds and music from S3${problem ? ` — UNREACHABLE: ${problem}` : ""}`);
+}
 
 const app = express();
 app.disable("x-powered-by");
@@ -103,7 +112,8 @@ app.get("/api/me", (_req, res) => {
 
 // Media for the preview player and the renderer (supports range requests).
 app.use("/media/jobs", express.static(JOBS_DIR, { index: false }));
-app.use("/media/assets", express.static(ASSETS_DIR, { index: false }));
+// Backgrounds and music: local assets/ folder or the S3 bucket (proxied, so the bucket can stay private).
+app.use("/media/assets", assets.handler());
 
 const route =
   (fn: (req: Request, res: Response) => Promise<unknown>) => (req: Request, res: Response, next: NextFunction) =>
@@ -117,13 +127,21 @@ function requireJob(req: Request, res: Response) {
 
 // Readiness: the voice service answers and the data folders are writable.
 app.get("/api/ready", async (_req, res) => {
-  const problems = await checkWritable([DATA_DIR, JOBS_DIR]);
-  const tts = await fetch(`${TTS_URL}/health`).then(
-    (r) => r.ok,
-    () => false,
-  );
-  const ready = tts && problems.length === 0;
-  res.status(ready ? 200 : 503).json({ ready, tts, storage: problems.map((p) => p.message) });
+  const [problems, tts, assetProblem] = await Promise.all([
+    checkWritable([DATA_DIR, JOBS_DIR]),
+    fetch(`${TTS_URL}/health`).then(
+      (r) => r.ok,
+      () => false,
+    ),
+    assets.check(),
+  ]);
+  const ready = tts && problems.length === 0 && !assetProblem;
+  res.status(ready ? 200 : 503).json({
+    ready,
+    tts,
+    storage: problems.map((p) => p.message),
+    assets: { kind: assets.kind, ok: !assetProblem, error: assetProblem },
+  });
 });
 
 app.get("/api/health", (_req, res) => {
@@ -133,9 +151,15 @@ app.get("/api/health", (_req, res) => {
 app.get(
   "/api/options",
   route(async (_req, res) => {
+    // A bucket outage must not break the whole UI: fall back to animated backgrounds and report it.
+    let assetsError: string | null = null;
+    const degrade = <T,>(fallback: T) => (e: Error) => {
+      assetsError = `No se pudieron listar fondos y música (${assets.kind}): ${e.message}`;
+      return fallback;
+    };
     const [backgrounds, music, voices] = await Promise.all([
-      listBackgrounds(),
-      listMusic(),
+      listBackgrounds().catch(degrade([])),
+      listMusic().catch(degrade([] as string[])),
       listVoices().then(
         (v) => ({ voices: v, error: null as string | null }),
         (e: Error) => ({ voices: [] as string[], error: e.message }),
@@ -143,6 +167,8 @@ app.get(
     ]);
     res.json({
       backgrounds,
+      assetStorage: assets.kind,
+      assetsError,
       procedural: PROCEDURAL_PRESETS,
       music,
       voices: voices.voices,

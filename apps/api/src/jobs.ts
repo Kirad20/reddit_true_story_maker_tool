@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Background, VideoComposition } from "@tsm/video";
-import { clipDuration, clipPath, listBackgrounds, musicPath } from "./assets";
+import { assetKey, assetUrl, clipDuration, listBackgrounds } from "./assets";
 import { adaptScript, ClaudeError } from "./claude";
 import { buildComposition, pickStartAt, withOrigin } from "./composition";
 import { agentReady } from "./aiconfig";
@@ -206,14 +206,14 @@ function postFromText(source: Extract<JobOptions["source"], { type: "text" }>): 
 async function resolveBackground(choice: JobOptions["background"], videoSec: number): Promise<Background> {
   if (choice.type === "procedural") return { kind: "procedural", preset: choice.preset };
   const category = (await listBackgrounds()).find((c) => c.name === choice.category);
-  if (!category) throw new Error(`Background category "${choice.category}" has no clips in assets/backgrounds`);
+  if (!category) throw new Error(`Background category "${choice.category}" has no clips in assets/backgrounds (or the S3 bucket)`);
   const file = choice.file && category.clips.includes(choice.file)
     ? choice.file
     : category.clips[Math.floor(Math.random() * category.clips.length)];
-  const durationSec = await clipDuration(clipPath(category.name, file));
+  const durationSec = await clipDuration(category.name, file);
   return {
     kind: "video",
-    src: `/media/assets/backgrounds/${encodeURIComponent(category.name)}/${encodeURIComponent(file)}`,
+    src: assetUrl(assetKey("backgrounds", category.name, file)),
     startAt: pickStartAt(durationSec, videoSec),
     durationSec,
   };
@@ -221,8 +221,7 @@ async function resolveBackground(choice: JobOptions["background"], videoSec: num
 
 function resolveMusic(file: string | null, volume: number): VideoComposition["music"] {
   if (!file) return null;
-  musicPath(file); // validates the name
-  return { src: `/media/assets/music/${encodeURIComponent(file)}`, volume };
+  return { src: assetUrl(assetKey("music", file)), volume };
 }
 
 async function compose(job: Job, next: JobStatus = "ready"): Promise<void> {
