@@ -24,9 +24,11 @@ COPY packages ./packages
 COPY apps ./apps
 
 # Fail the build on type errors, then build the web UI and fetch the headless browser for rendering.
+# Remotion keeps the browser in <nearest package.json>/node_modules/.remotion of the process cwd; the API
+# runs from apps/api (npm start -w), so download it there or rendering tries again at runtime (read-only).
 RUN npm run typecheck \
   && npm run build -w @tsm/web \
-  && cd packages/video && npx remotion browser ensure
+  && cd apps/api && npx remotion browser ensure
 
 RUN mkdir -p /app/data /app/jobs /app/assets/backgrounds /app/assets/music \
   && chown -R node:node /app/data /app/jobs /app/assets

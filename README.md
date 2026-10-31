@@ -54,6 +54,19 @@ npm run dev
 
 Abre <http://localhost:5173>. Levanta tres procesos: voz (8766), API (8787) y web (5173).
 
+### Acceso y usuarios
+
+La app pide iniciar sesión ([Better Auth](https://better-auth.com), correo y contraseña; usuarios en `data/auth.db`).
+
+1. **Primer arranque**: como no hay usuarios, la API crea un **usuario temporal** de administrador y muestra sus
+   datos en la consola (`[auth] TEMPORARY SETUP USER`, correo `setup@truestorymaker.local`). Para fijar la
+   contraseña usa `SETUP_PASSWORD` en `.env`; si no, es aleatoria y cambia en cada arranque mientras exista.
+2. Entra con él y en la pestaña **Usuarios** crea tu cuenta con rol **Administrador**.
+3. El usuario temporal se **borra automáticamente** en ese momento (con su sesión) y entras con tu cuenta.
+
+En **Usuarios** (solo administradores) puedes crear usuarios, cambiar su rol, restablecer contraseñas,
+bloquearlos o borrarlos. No hay registro público.
+
 1. Pega el link del post (o el texto), elige comentarios, idioma, voz, fondo y subtítulos.
 2. Cuando termine la voz aparece la **vista previa**: cambia estilo de subtítulos, fondo o música sin
    regenerar la voz.
@@ -68,7 +81,7 @@ Abre <http://localhost:5173>. Levanta tres procesos: voz (8766), API (8787) y we
 
 ## Pipeline automático
 
-Pestañas **Panel → Historias → Videos → Publicaciones → Ajustes**:
+Pestañas **Panel → Historias → Videos → Publicaciones → Ajustes** (y **Usuarios** para administradores):
 
 1. **Descubrir**: el agente escribe historias **originales** (ficción en estilo Reddit, por géneros) con Claude.
    Si Reddit te aprueba acceso a su API, también puede traer posts top de subreddits por la API oficial.
@@ -85,8 +98,22 @@ Activa el **piloto automático** en Ajustes para que el ciclo corra cada N minut
 ## Publicar en YouTube, TikTok y Facebook
 
 Cada plataforma usa **tu propia app de desarrollador** y su API oficial. Pega sus credenciales en Ajustes →
-Cuentas para publicar (tarjeta de cada plataforma),
-registra el redirect URI `http://localhost:8787/api/auth/<plataforma>/callback` y pulsa **Conectar** en Ajustes.
+Cuentas para publicar (tarjeta de cada plataforma), registra el redirect URI que muestra la tarjeta y pulsa
+**Conectar**:
+
+| Plataforma | Redirect URI (local) |
+| --- | --- |
+| YouTube | `http://localhost:8787/api/identity/callback/google` |
+| TikTok | `http://localhost:8787/api/identity/callback/tiktok` |
+| Facebook | `http://localhost:8787/api/identity/callback/facebook` |
+
+La conexión la hace **Better Auth** (el mismo sistema del login): la cuenta de Google, TikTok o Facebook queda
+vinculada a tu usuario, sus tokens se guardan cifrados en `data/auth.db` y Better Auth los renueva solo cuando
+caducan. La última cuenta conectada en cada plataforma es la que usa el pipeline para publicar; la tarjeta
+muestra qué usuario la conectó. Estas cuentas solo sirven para publicar: no permiten iniciar sesión en la app.
+Si borras a un usuario, se desconectan las cuentas que vinculó.
+
+Si venías de una versión anterior, vuelve a conectar las cuentas (cambió el redirect URI).
 
 | Plataforma | Dónde crear la app | Credenciales en Ajustes | Límite hasta la revisión de la plataforma |
 | --- | --- | --- | --- |
@@ -112,6 +139,7 @@ Los videos se marcan como contenido generado con IA (`containsSyntheticMedia` en
 | `apps/api/src/automation.ts` | Orquestador: descubrir → curar → producir → publicar, horarios y reintentos |
 | `apps/api/src/agents.ts` | Agentes Claude: escritor de historias, curador, metadatos de publicación |
 | `apps/api/src/publish/` | Publicadores YouTube, TikTok y Facebook (OAuth + APIs oficiales) |
+| `apps/api/src/auth.ts` | Login (Better Auth + plugin admin), usuario temporal de instalación, protección de la API |
 | `data/` | Historias, publicaciones, ajustes, actividad y tokens de tus cuentas (`accounts.json`) |
 | `packages/video` | Composición Remotion compartida (fondo, tarjeta de Reddit, subtítulos) |
 | `services/tts` | Python + FastAPI: Kokoro (voz) + faster-whisper (tiempos por palabra) |

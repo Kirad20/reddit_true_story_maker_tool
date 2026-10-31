@@ -1,22 +1,21 @@
-﻿import express, { type NextFunction, type Request, type Response } from "express";
+import express, { type NextFunction, type Request, type Response } from "express";
 import { ZodError } from "zod";
 import { PROCEDURAL_PRESETS, listBackgrounds, listMusic } from "./assets";
 import { AGENTS, CREDENTIALS, reconcileAgents, agentLabel, agentReady, aiConfig, loadAIConfig, mask, newProviderId, secret, setSecrets } from "./aiconfig";
 import fs from "node:fs";
 import path from "node:path";
+import { toNodeHandler } from "better-auth/node";
+import { AUTH_BASE_PATH, auth, initAuth, requireSession } from "./auth";
 import {
   API_PORT,
-  APP_PASSWORD,
-  APP_USER,
   ASSETS_DIR,
   DATA_DIR,
   DEFAULT_VOICES,
   JOBS_DIR,
   TTS_URL,
   WEB_DIST,
-  WEB_ORIGIN,
 } from "./config";
-import { basicAuth, securityHeaders } from "./security";
+import { securityHeaders } from "./security";
 import { checkEnvironment, checkWritable, reportOrExit } from "./validate";
 import { listProviderModels } from "./llm";
 import {
@@ -48,7 +47,7 @@ import {
   startAutomation,
 } from "./automation";
 import { PLATFORMS, loadDomain, publications, settings, stories, storyJobIds, type Platform, type Settings } from "./domain";
-import { accountStatuses, facebook, finishAuth, loadAccounts, publishers, startAuth } from "./publish";
+import { accountStatuses, facebook, loadAccounts, onPlatformLinked, publishers } from "./publish";
 import { accounts } from "./publish/accounts";
 import { hasRedditAccess } from "./reddit";
 import {
@@ -69,8 +68,14 @@ reportOrExit([...checkEnvironment(process.env), ...(await checkWritable([DATA_DI
 const app = express();
 app.disable("x-powered-by");
 app.use(securityHeaders);
-if (APP_PASSWORD) app.use(basicAuth(APP_USER, APP_PASSWORD));
+// Better Auth (login, sessions, user management) reads the raw body: mount it before express.json.
+app.all(`${AUTH_BASE_PATH}/*splat`, toNodeHandler(auth));
+app.use(requireSession());
 app.use(express.json({ limit: "1mb" }));
+
+app.get("/api/me", (_req, res) => {
+  res.json(res.locals.user);
+});
 
 // Media for the preview player and the renderer (supports range requests).
 app.use("/media/jobs", express.static(JOBS_DIR, { index: false }));
@@ -428,29 +433,8 @@ const platformParam = (req: Request): Platform => {
   return platform;
 };
 
-app.get("/api/auth/:platform/start", (req, res) => {
-  try {
-    res.redirect(startAuth(platformParam(req)));
-  } catch (error) {
-    res.redirect(`${WEB_ORIGIN}/?tab=settings&authError=${encodeURIComponent((error as Error).message)}`);
-  }
-});
-
-app.get(
-  "/api/auth/:platform/callback",
-  route(async (req, res) => {
-    const platform = platformParam(req);
-    const { code, state, error, error_description } = req.query as Record<string, string | undefined>;
-    try {
-      if (error || !code || !state) throw new Error(error_description ?? error ?? "Login was cancelled");
-      await finishAuth(platform, code, state);
-      await log("info", `Connected ${platform}`);
-      res.redirect(`${WEB_ORIGIN}/?tab=settings&connected=${platform}`);
-    } catch (e) {
-      res.redirect(`${WEB_ORIGIN}/?tab=settings&authError=${encodeURIComponent((e as Error).message)}`);
-    }
-  }),
-);
+// Connecting happens in the browser through Better Auth (authClient.linkSocial → /api/identity/callback/<provider>).
+onPlatformLinked((event) => void log(event.ok ? "info" : "error", event.message));
 
 app.post(
   "/api/auth/:platform/disconnect",
@@ -511,6 +495,7 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   res.status(400).json({ error: message });
 });
 
+await initAuth();
 await loadJobs();
 await loadAIConfig();
 await loadDomain();

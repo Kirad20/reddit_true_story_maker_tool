@@ -1,12 +1,13 @@
 import { secret } from "../aiconfig";
 import fs from "node:fs/promises";
 import { accounts, saveAccount, type FacebookAccount } from "./accounts";
+import { tokenSource } from "./tokens";
 import { PublishError, readJson, type PublishInput, type Publisher } from "./types";
 
 // Facebook Page Reels through the Graph API, with the user's own Meta app.
+// Connecting goes through Better Auth's "facebook" provider (see auth.ts); publishing uses Page tokens.
 const VERSION = "v23.0";
 const GRAPH = `https://graph.facebook.com/${VERSION}`;
-const SCOPES = ["pages_show_list", "pages_read_engagement", "pages_manage_posts", "publish_video"];
 
 const appId = () => secret("facebook_app_id");
 const appSecret = () => secret("facebook_app_secret");
@@ -37,29 +38,28 @@ export const facebook: Publisher & { selectPage(pageId: string): Promise<void> }
     return {
       platform: "facebook",
       configured: Boolean(appId() && appSecret()),
-      connected: Boolean(account),
+      connected: Boolean(account) && tokenSource.exists("facebook"),
       accountName: page?.name ?? null,
+      linkedBy: account?.linkedBy ?? null,
       note: "Publica Reels en una Página de Facebook que administres. Para usarla fuera de modo desarrollo, Meta debe aprobar tu app.",
     };
   },
 
-  authUrl(state, redirectUri) {
-    const params = new URLSearchParams({ client_id: appId(), redirect_uri: redirectUri, state, scope: SCOPES.join(","), response_type: "code" });
-    return `https://www.facebook.com/${VERSION}/dialog/oauth?${params}`;
-  },
-
-  async handleCallback(code, redirectUri) {
-    const short = await graph("/oauth/access_token", { client_id: appId(), client_secret: appSecret(), redirect_uri: redirectUri, code });
+  async onLinked(link) {
+    const previous = accounts.get().facebook;
+    await saveAccount("facebook", { ...link, accountName: null, pages: [], pageId: null });
     const long = await graph("/oauth/access_token", {
       grant_type: "fb_exchange_token",
       client_id: appId(),
       client_secret: appSecret(),
-      fb_exchange_token: short.access_token,
+      fb_exchange_token: await tokenSource.accessToken("facebook"),
     });
     // Page tokens obtained from a long-lived user token do not expire.
     const pages = await graph("/me/accounts", { access_token: long.access_token, fields: "id,name,access_token" });
     const list = (pages.data ?? []).map((p: any) => ({ id: p.id, name: p.name, token: p.access_token }));
-    await saveAccount("facebook", { userToken: long.access_token, pages: list, pageId: list[0]?.id ?? null });
+    if (list.length === 0) throw new Error("This Facebook account manages no Page (or the Page permissions were not granted)");
+    const pageId = list.some((p: { id: string }) => p.id === previous?.pageId) ? previous!.pageId : list[0].id;
+    await saveAccount("facebook", { ...link, accountName: null, pages: list, pageId });
   },
 
   async selectPage(pageId) {
@@ -69,7 +69,7 @@ export const facebook: Publisher & { selectPage(pageId: string): Promise<void> }
   },
 
   async disconnect() {
-    await saveAccount("facebook", null);
+    await tokenSource.disconnect("facebook");
   },
 
   async publish(input: PublishInput) {

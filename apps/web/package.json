@@ -10,6 +10,7 @@
   "dependencies": {
     "@remotion/player": "4",
     "@tsm/video": "*",
+    "better-auth": "^1.7.14",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "remotion": "4"

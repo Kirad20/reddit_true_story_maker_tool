@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { CaptionStyle, VideoComposition } from "@tsm/video";
+import { UNAUTHORIZED_EVENT } from "./auth";
 
 export type BackgroundChoice =
   | { type: "procedural"; preset: "sunset" | "ocean" | "neon" }
@@ -53,6 +54,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: init?.body ? { "Content-Type": "application/json" } : undefined,
   });
+  if (res.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
   if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
@@ -155,7 +157,19 @@ export type Settings = {
   };
 };
 
-export type AccountStatus = { platform: Platform; configured: boolean; connected: boolean; accountName: string | null; note: string | null };
+export type AccountStatus = {
+  platform: Platform;
+  configured: boolean;
+  connected: boolean;
+  accountName: string | null;
+  /** App user who connected it. */
+  linkedBy: string | null;
+  note: string | null;
+  /** Better Auth social provider used to connect it. */
+  provider: "google" | "tiktok" | "facebook";
+  /** Redirect URI to register in the platform's developer app. */
+  redirectUri: string;
+};
 
 export type Pipeline = {
   status: { lastCycle: string | null; cycling: boolean; publishing: boolean; enabled: boolean };

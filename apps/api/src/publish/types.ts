@@ -17,14 +17,16 @@ export type AccountStatus = {
   configured: boolean;
   connected: boolean;
   accountName: string | null;
+  /** App user who connected it. */
+  linkedBy: string | null;
   note: string | null;
 };
 
 export interface Publisher {
   platform: Platform;
   status(): AccountStatus;
-  authUrl(state: string, redirectUri: string): string;
-  handleCallback(code: string, redirectUri: string): Promise<void>;
+  /** Called after the user connected the account through Better Auth (Ajustes → Conectar). */
+  onLinked(link: { userId: string; accountId: string; linkedBy: string | null }): Promise<void>;
   disconnect(): Promise<void>;
   publish(input: PublishInput, settings: unknown): Promise<PublishResult>;
 }

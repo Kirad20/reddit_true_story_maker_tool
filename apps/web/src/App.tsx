@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
+import { UNAUTHORIZED_EVENT, authClient, isAdmin, type AppUser } from "./auth";
 import { CreateForm } from "./CreateForm";
 import { JobView } from "./JobView";
+import { LoginView } from "./LoginView";
 import { PublicationsView } from "./PublicationsView";
 import { SettingsView } from "./SettingsView";
 import { StoriesView } from "./StoriesView";
+import { UsersView } from "./UsersView";
 import { PLATFORM_LABEL, api, useJob, usePipelineData, type Job, type Options, type Pipeline, type Publication, type Story } from "./api";
 
 const STATUS_LABEL: Record<Job["status"], string> = {
@@ -18,13 +21,14 @@ const STATUS_LABEL: Record<Job["status"], string> = {
   failed: "Falló",
 };
 
-type Tab = "panel" | "stories" | "videos" | "publications" | "settings";
+type Tab = "panel" | "stories" | "videos" | "publications" | "settings" | "users";
 const TABS: { id: Tab; label: string }[] = [
   { id: "panel", label: "Panel" },
   { id: "stories", label: "Historias" },
   { id: "videos", label: "Videos" },
   { id: "publications", label: "Publicaciones" },
   { id: "settings", label: "Ajustes" },
+  { id: "users", label: "Usuarios" },
 ];
 
 function initialTab(): Tab {
@@ -94,8 +98,26 @@ function Dashboard({ pipeline, stories, pubs, go }: { pipeline: Pipeline; storie
   );
 }
 
+/** Login gate: the workspace only mounts with a valid session. */
 export function App() {
-  const [tab, setTab] = useState<Tab>(initialTab);
+  const { data, isPending, refetch } = authClient.useSession();
+
+  useEffect(() => {
+    const onUnauthorized = () => void refetch();
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+  }, [refetch]);
+
+  if (isPending && !data) return <p className="muted app">Cargando…</p>;
+  if (!data) return <LoginView onSignedIn={() => void refetch()} />;
+  const me = data.user as AppUser;
+  return <Workspace key={me.id} me={me} signOut={() => authClient.signOut().then(() => refetch())} />;
+}
+
+function Workspace({ me, signOut }: { me: AppUser; signOut: () => void }) {
+  const admin = isAdmin(me);
+  const tabs = TABS.filter((t) => t.id !== "users" || admin);
+  const [tab, setTab] = useState<Tab>(() => (me.temporary ? "users" : initialTab()));
   const [options, setOptions] = useState<Options | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -149,7 +171,7 @@ export function App() {
           <span className="logo">▶</span> TrueStory<b>Maker</b>
         </div>
         <nav className="tabs">
-          {TABS.map((t) => (
+          {tabs.map((t) => (
             <button key={t.id} className={tab === t.id ? "on" : ""} onClick={() => go(t.id)}>
               {t.label}
               {t.id === "stories" && inboxCount > 0 && <span className="count">{inboxCount}</span>}
@@ -157,7 +179,26 @@ export function App() {
             </button>
           ))}
         </nav>
+        <div className="whoami">
+          <span className="small muted" title={me.email}>
+            {me.name}
+            {admin ? " · admin" : ""}
+          </span>
+          <button className="ghost" onClick={signOut}>
+            Salir
+          </button>
+        </div>
       </header>
+
+      {me.temporary && tab !== "users" && (
+        <p className="warn-box">
+          Sesión con el usuario temporal.{" "}
+          <button className="link inline-link" onClick={() => go("users")}>
+            Crea tu cuenta de administrador
+          </button>{" "}
+          para que se borre.
+        </p>
+      )}
 
       {loadError && (
         <p className="error">
@@ -165,11 +206,12 @@ export function App() {
         </p>
       )}
 
-      {!pipeline && tab !== "videos" && !loadError && <p className="muted">Cargando…</p>}
+      {!pipeline && tab !== "videos" && tab !== "users" && !loadError && <p className="muted">Cargando…</p>}
       {tab === "panel" && pipeline && <Dashboard pipeline={pipeline} stories={stories} pubs={pubs} go={go} />}
       {tab === "stories" && pipeline && <StoriesView pipeline={pipeline} stories={stories} refresh={refreshPipeline} openJob={openJob} />}
       {tab === "publications" && <PublicationsView pubs={pubs} refresh={refreshPipeline} openJob={openJob} />}
       {tab === "settings" && pipeline && options && <SettingsView pipeline={pipeline} options={options} refresh={refreshPipeline} />}
+      {tab === "users" && admin && <UsersView me={me} onSelfRemoved={signOut} />}
 
       {tab === "videos" && (
         <main className="layout">

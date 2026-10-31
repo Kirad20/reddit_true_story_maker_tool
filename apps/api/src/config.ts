@@ -25,9 +25,7 @@ export const WEB_ORIGIN = process.env.WEB_ORIGIN ?? PUBLIC_URL ?? "http://localh
 export const TTS_URL = process.env.TTS_URL ?? "http://127.0.0.1:8766";
 /** Built web app served by the API in production (apps/web/dist). */
 export const WEB_DIST = process.env.WEB_DIST ?? path.join(ROOT_DIR, "apps/web/dist");
-/** Basic-auth credentials protecting the whole app; required in production. */
-export const APP_USER = process.env.APP_USER || "admin";
-export const APP_PASSWORD = process.env.APP_PASSWORD || "";
+// Login and users are handled by Better Auth (see auth.ts); accounts live in data/auth.db.
 
 // Model providers, per-agent models and service credentials live in Settings (see aiconfig.ts).
 

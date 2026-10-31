@@ -11,8 +11,11 @@ services:
     environment:
       - SERVICE_URL_APP_8787
       - PUBLIC_URL=${PUBLIC_URL:-${SERVICE_URL_APP_8787}}
-      - APP_USER=${APP_USER:-admin}
-      - APP_PASSWORD=${APP_PASSWORD:?Set APP_PASSWORD (12+ characters) to protect the app}
+      # Login (Better Auth). Optional: without them a signing secret is generated in app-data and the
+      # temporary setup user gets a random password printed in the logs.
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-}
+      - SETUP_EMAIL=${SETUP_EMAIL:-}
+      - SETUP_PASSWORD=${SETUP_PASSWORD:-}
       - NODE_ENV=production
       - API_PORT=8787
       - TTS_URL=http://tts:8766
