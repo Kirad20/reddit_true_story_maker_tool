@@ -55,6 +55,22 @@ export type Publication = {
   attempts: number;
   /** Part number for split stories (TikTok/Facebook); parts publish strictly in order. */
   part?: { index: number; total: number } | null;
+  /** TikTok review flow: what the creator chose in the Direct Post screen right before posting. */
+  tiktok?: TikTokPostOptions | null;
+};
+
+export type TikTokPrivacy = "SELF_ONLY" | "MUTUAL_FOLLOW_FRIENDS" | "FOLLOWER_OF_CREATOR" | "PUBLIC_TO_EVERYONE";
+
+/** Per-post choices TikTok's Content Sharing Guidelines require the creator to make (no defaults). */
+export type TikTokPostOptions = {
+  privacy: TikTokPrivacy;
+  allowComment: boolean;
+  allowDuet: boolean;
+  allowStitch: boolean;
+  /** Commercial content disclosure: promoting the creator's own business ("Promotional content"). */
+  brandOrganic: boolean;
+  /** Commercial content disclosure: paid partnership with a third-party brand ("Paid partnership"). */
+  brandedContent: boolean;
 };
 
 /** Reddit "top" windows (t=hour|day|week|month|year|all). */
@@ -102,7 +118,15 @@ export type Settings = {
     dailyLimitPerPlatform: number;
     platforms: {
       youtube: { enabled: boolean; privacy: "private" | "unlisted" | "public" };
-      tiktok: { enabled: boolean; privacy: "SELF_ONLY" | "MUTUAL_FOLLOW_FRIENDS" | "FOLLOWER_OF_CREATOR" | "PUBLIC_TO_EVERYONE" };
+      tiktok: {
+        enabled: boolean;
+        privacy: TikTokPrivacy;
+        /**
+         * Feature flag for the TikTok app review demo: every TikTok post waits for the creator to fill the
+         * Direct Post screen (account, privacy with no default, interactions, commercial disclosure, consent).
+         */
+        reviewDemo: boolean;
+      };
       facebook: { enabled: boolean };
     };
   };
@@ -133,7 +157,7 @@ export const DEFAULT_SETTINGS: Settings = {
     dailyLimitPerPlatform: 3,
     platforms: {
       youtube: { enabled: false, privacy: "private" },
-      tiktok: { enabled: false, privacy: "SELF_ONLY" },
+      tiktok: { enabled: false, privacy: "SELF_ONLY", reviewDemo: false },
       facebook: { enabled: false },
     },
   },

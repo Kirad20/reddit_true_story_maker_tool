@@ -95,10 +95,24 @@ export const settingsSchema = z.object({
       tiktok: z.object({
         enabled: z.boolean(),
         privacy: z.enum(["SELF_ONLY", "MUTUAL_FOLLOW_FRIENDS", "FOLLOWER_OF_CREATOR", "PUBLIC_TO_EVERYONE"]),
+        reviewDemo: z.boolean().default(false),
       }),
       facebook: z.object({ enabled: z.boolean() }),
     }),
   }),
+});
+
+/** Direct Post screen (TikTok review flow). */
+export const tiktokPostInput = z.object({
+  title: z.string().min(1).max(2200),
+  privacy: z.enum(["SELF_ONLY", "MUTUAL_FOLLOW_FRIENDS", "FOLLOWER_OF_CREATOR", "PUBLIC_TO_EVERYONE"]),
+  allowComment: z.boolean(),
+  allowDuet: z.boolean(),
+  allowStitch: z.boolean(),
+  brandOrganic: z.boolean(),
+  brandedContent: z.boolean(),
+  /** The creator ticked the consent declaration. */
+  consent: z.literal(true),
 });
 
 export const manualStoryInput = z.object({

@@ -1,5 +1,6 @@
 import { secret } from "../aiconfig";
 import fs from "node:fs/promises";
+import type { TikTokPostOptions, TikTokPrivacy } from "../domain";
 import { accounts, saveAccount } from "./accounts";
 import { TIKTOK_API } from "./scopes";
 import { tokenSource } from "./tokens";
@@ -13,8 +14,37 @@ const clientKey = () => secret("tiktok_client_key");
 const clientSecret = () => secret("tiktok_client_secret");
 
 export type TikTokSettings = {
-  privacy: "SELF_ONLY" | "MUTUAL_FOLLOW_FRIENDS" | "FOLLOWER_OF_CREATOR" | "PUBLIC_TO_EVERYONE";
+  privacy: TikTokPrivacy;
+  /** Choices made by the creator in the Direct Post screen (review flow); overrides the defaults above. */
+  post?: TikTokPostOptions | null;
 };
+
+/** What /post/publish/creator_info/query/ returns, as the Direct Post screen needs it. */
+export type TikTokCreatorInfo = {
+  nickname: string;
+  username: string | null;
+  avatarUrl: string | null;
+  privacyOptions: TikTokPrivacy[];
+  commentDisabled: boolean;
+  duetDisabled: boolean;
+  stitchDisabled: boolean;
+  maxVideoPostDurationSec: number | null;
+};
+
+/** TikTok requires querying the creator's info (and whether they can post now) right before each post. */
+export async function tiktokCreatorInfo(token?: string): Promise<TikTokCreatorInfo> {
+  const data = await api("/post/publish/creator_info/query/", token ?? (await tokenSource.accessToken("tiktok")), {});
+  return {
+    nickname: data.creator_nickname ?? "",
+    username: data.creator_username ?? null,
+    avatarUrl: data.creator_avatar_url ?? null,
+    privacyOptions: data.privacy_level_options ?? [],
+    commentDisabled: Boolean(data.comment_disabled),
+    duetDisabled: Boolean(data.duet_disabled),
+    stitchDisabled: Boolean(data.stitch_disabled),
+    maxVideoPostDurationSec: typeof data.max_video_post_duration_sec === "number" ? data.max_video_post_duration_sec : null,
+  };
+}
 
 async function api(path: string, token: string, body: unknown): Promise<Record<string, any>> {
   const res = await fetch(`${API}${path}`, {
@@ -60,9 +90,17 @@ export const tiktok: Publisher = {
     const token = await tokenSource.accessToken("tiktok");
 
     // TikTok requires querying the creator's allowed privacy levels before each post.
-    const creator = await api("/post/publish/creator_info/query/", token, {});
-    const allowed: string[] = creator.privacy_level_options ?? [];
-    const privacy = allowed.includes(settings.privacy) ? settings.privacy : allowed.includes("SELF_ONLY") ? "SELF_ONLY" : allowed[0];
+    const creator = await tiktokCreatorInfo(token);
+    const allowed: string[] = creator.privacyOptions;
+    const post = settings.post ?? null;
+    let privacy: string | undefined;
+    if (post) {
+      // The creator picked it in the Direct Post screen: never silently change it.
+      if (!allowed.includes(post.privacy)) throw new PublishError(`TikTok no longer allows privacy "${post.privacy}" for this account`, false);
+      privacy = post.privacy;
+    } else {
+      privacy = allowed.includes(settings.privacy) ? settings.privacy : allowed.includes("SELF_ONLY") ? "SELF_ONLY" : allowed[0];
+    }
     if (!privacy) throw new PublishError("TikTok returned no allowed privacy level for this account", false);
 
     const file = await fs.readFile(input.filePath);
@@ -74,10 +112,11 @@ export const tiktok: Publisher = {
       post_info: {
         title: caption,
         privacy_level: privacy,
-        disable_comment: false,
-        disable_duet: false,
-        disable_stitch: false,
+        disable_comment: post ? !post.allowComment || creator.commentDisabled : false,
+        disable_duet: post ? !post.allowDuet || creator.duetDisabled : false,
+        disable_stitch: post ? !post.allowStitch || creator.stitchDisabled : false,
         is_aigc: input.aiGenerated,
+        ...(post ? { brand_organic_toggle: post.brandOrganic, brand_content_toggle: post.brandedContent } : {}),
       },
       source_info: { source: "FILE_UPLOAD", video_size: size, chunk_size: size, total_chunk_count: 1 },
     });

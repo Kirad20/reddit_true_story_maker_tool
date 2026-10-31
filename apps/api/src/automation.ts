@@ -11,9 +11,11 @@ import {
   type Platform,
   type Publication,
   type Story,
+  type TikTokPostOptions,
 } from "./domain";
 import { createJob, getJob, isBusy, jobEvents, redoJob, startRender, type Job } from "./jobs";
 import { publishers } from "./publish";
+import { tiktokCreatorInfo } from "./publish/tiktok";
 import { PublishError } from "./publish/types";
 import { nextSlot } from "./schedule";
 import { partLabel } from "./script";
@@ -267,7 +269,8 @@ async function createPublication(input: {
 }): Promise<Publication | null> {
   if (publications.find((p) => p.jobId === input.jobId && p.platform === input.platform && p.status !== "canceled")) return null;
   const cfg = settings.get();
-  const review = cfg.publish.requireReview;
+  // In the TikTok review flow every TikTok post waits for the creator's Direct Post screen.
+  const review = cfg.publish.requireReview || (input.platform === "tiktok" && tiktokReviewDemo());
   const previous = input.part && input.part.index > 1 ? previousPart({ ...input, storyId: input.storyId }) : undefined;
   const publication: Publication = {
     id: newId("pub"),
@@ -357,9 +360,57 @@ function assertPreviousPartReady(pub: Publication, need: "scheduled" | "publishe
   return prev;
 }
 
+/** Feature flag: TikTok app review demo (Direct Post screen before every TikTok post). */
+export function tiktokReviewDemo(): boolean {
+  return Boolean(settings.get().publish.platforms.tiktok.reviewDemo);
+}
+
+function assertTikTokChoices(pub: Publication) {
+  if (pub.platform === "tiktok" && tiktokReviewDemo() && !pub.tiktok) {
+    throw new Error("Open \"Post to TikTok\" and choose the privacy and interaction settings first");
+  }
+}
+
+/** Seconds of the rendered video (from its composition). */
+export function videoDurationSec(jobId: string): number | null {
+  const c = getJob(jobId)?.composition;
+  return c ? c.durationInFrames / c.fps : null;
+}
+
+/**
+ * TikTok review flow: the creator filled the Direct Post screen. Validate the choices against TikTok's
+ * creator_info right now, store them on the publication and post immediately.
+ */
+export async function publishToTikTok(id: string, input: TikTokPostOptions & { title: string }): Promise<Publication> {
+  const pub = publications.get(id);
+  if (!pub) throw new Error("Publication not found");
+  if (pub.platform !== "tiktok") throw new Error("Not a TikTok publication");
+  if (["publishing", "published"].includes(pub.status)) throw new Error(`Already ${pub.status}`);
+  const creator = await tiktokCreatorInfo();
+  if (!creator.privacyOptions.includes(input.privacy)) throw new Error("That privacy level is not available for this TikTok account");
+  if (input.brandedContent && input.privacy === "SELF_ONLY") throw new Error("Branded content visibility cannot be set to private");
+  const duration = videoDurationSec(pub.jobId);
+  if (duration && creator.maxVideoPostDurationSec && duration > creator.maxVideoPostDurationSec) {
+    throw new Error(`This video is ${Math.ceil(duration)} s; this account can post up to ${creator.maxVideoPostDurationSec} s`);
+  }
+  const { title, ...choices } = input;
+  await publications.update(id, {
+    title,
+    description: "",
+    tiktok: {
+      ...choices,
+      allowComment: choices.allowComment && !creator.commentDisabled,
+      allowDuet: choices.allowDuet && !creator.duetDisabled,
+      allowStitch: choices.allowStitch && !creator.stitchDisabled,
+    },
+  });
+  return publishNow(id);
+}
+
 export async function approvePublication(id: string, edits?: Partial<Pick<Publication, "title" | "description" | "tags">>): Promise<Publication> {
   const pub = publications.get(id);
   if (!pub) throw new Error("Publication not found");
+  assertTikTokChoices(pub);
   if (!["needs_review", "failed", "canceled"].includes(pub.status)) throw new Error(`Cannot approve a ${pub.status} publication`);
   const prev = assertPreviousPartReady(pub, "scheduled");
   const notBefore = prev ? prev.publishedAt ?? prev.scheduledAt : null;
@@ -370,6 +421,7 @@ export async function publishNow(id: string): Promise<Publication> {
   const pub = publications.get(id);
   if (!pub) throw new Error("Publication not found");
   if (["publishing", "published"].includes(pub.status)) throw new Error(`Already ${pub.status}`);
+  assertTikTokChoices(pub);
   assertPreviousPartReady(pub, "published");
   const updated = await publications.update(id, { status: "scheduled", scheduledAt: new Date().toISOString(), error: null });
   void publisherTick();
@@ -438,7 +490,7 @@ async function publishOne(pub: Publication): Promise<void> {
         // AI narration is always synthetic; AI-written stories even more so.
         aiGenerated: true,
       },
-      cfg[pub.platform],
+      pub.platform === "tiktok" ? { ...cfg.tiktok, post: pub.tiktok ?? null } : cfg[pub.platform],
     );
     await publications.update(pub.id, {
       status: "published",
