@@ -8,6 +8,7 @@ import { PublicationsView } from "./PublicationsView";
 import { SettingsView } from "./SettingsView";
 import { StoriesView } from "./StoriesView";
 import { UsersView } from "./UsersView";
+import { Toasts, toast } from "./toast";
 import { PLATFORM_LABEL, api, useJob, usePipelineData, type Job, type Options, type Pipeline, type Publication, type Story } from "./api";
 
 const STATUS_LABEL: Record<Job["status"], string> = {
@@ -23,14 +24,14 @@ const STATUS_LABEL: Record<Job["status"], string> = {
 };
 
 type Tab = "panel" | "stories" | "videos" | "publications" | "observability" | "settings" | "users";
-const TABS: { id: Tab; label: string }[] = [
-  { id: "panel", label: "Panel" },
-  { id: "stories", label: "Historias" },
-  { id: "videos", label: "Videos" },
-  { id: "publications", label: "Publicaciones" },
-  { id: "observability", label: "Observabilidad" },
-  { id: "settings", label: "Ajustes" },
-  { id: "users", label: "Usuarios" },
+const TABS: { id: Tab; label: string; icon: string }[] = [
+  { id: "panel", label: "Panel", icon: "⌂" },
+  { id: "stories", label: "Historias", icon: "✎" },
+  { id: "videos", label: "Videos", icon: "▶" },
+  { id: "publications", label: "Publicaciones", icon: "➤" },
+  { id: "observability", label: "Observabilidad", icon: "◔" },
+  { id: "settings", label: "Ajustes", icon: "⚙" },
+  { id: "users", label: "Usuarios", icon: "☺" },
 ];
 
 function initialTab(): Tab {
@@ -57,7 +58,30 @@ function Dashboard({ pipeline, stories, pubs, go }: { pipeline: Pipeline; storie
   if (!pipeline.capabilities.claude) missing.push("un modelo para el Escritor (Ajustes → Modelos de IA)");
   if (connected.length === 0) missing.push("conectar al menos una cuenta (YouTube, TikTok o Facebook)");
 
+  const todo = steps[0].value + steps[3].value;
+  const setup = [
+    { ok: pipeline.capabilities.claude, label: "Modelo de IA configurado", tab: "settings" as Tab },
+    { ok: connected.length > 0, label: "Al menos una cuenta conectada", tab: "settings" as Tab },
+    { ok: pipeline.status.enabled, label: "Piloto automático activo", tab: "settings" as Tab },
+  ];
+
   return (
+    <div>
+      <div className="hero">
+        <div>
+          <h2>{todo > 0 ? `Tienes ${todo} ${todo === 1 ? "tarea" : "tareas"} por revisar` : "Todo al día"}</h2>
+          <p className="muted">
+            {steps[0].value > 0 ? `${steps[0].value} historias esperan tu aprobación. ` : ""}
+            {steps[3].value > 0 ? `${steps[3].value} publicaciones listas para revisar.` : ""}
+            {todo === 0 ? "Crea un video nuevo o deja que el piloto automático trabaje." : ""}
+          </p>
+        </div>
+        <div className="actions">
+          {steps[0].value > 0 && <button className="ghost" onClick={() => go("stories")}>Revisar historias</button>}
+          {steps[3].value > 0 && <button className="ghost" onClick={() => go("publications")}>Revisar publicaciones</button>}
+          <button className="primary" onClick={() => go("videos")}>+ Nuevo video</button>
+        </div>
+      </div>
     <div className="dashboard">
       <section className="panel">
         <header className="view-head">
@@ -69,10 +93,19 @@ function Dashboard({ pipeline, stories, pubs, go }: { pipeline: Pipeline; storie
           </div>
           <span className={`badge ${pipeline.status.enabled ? "done" : ""}`}>{pipeline.status.enabled ? "Piloto automático activo" : "Piloto automático apagado"}</span>
         </header>
-        {missing.length > 0 && <p className="warn">Para el modo automático falta: {missing.join("; ")}. Configúralo en Ajustes.</p>}
+        {missing.length > 0 && (
+          <ul className="checklist">
+            {setup.map((s) => (
+              <li key={s.label} className={s.ok ? "ok" : ""}>
+                <span className="tick">{s.ok ? "✓" : ""}</span>
+                {s.ok ? s.label : <button className="link inline-link" onClick={() => go(s.tab)}>{s.label}</button>}
+              </li>
+            ))}
+          </ul>
+        )}
         <div className="stats">
           {steps.map((s) => (
-            <button key={s.label} className="stat" onClick={() => go(s.tab)}>
+            <button key={s.label} className={`stat${s.value > 0 && (s.tab === "stories" || s.label.includes("revisar")) ? " hot" : ""}`} onClick={() => go(s.tab)}>
               <strong>{s.value}</strong>
               <span>{s.label}</span>
             </button>
@@ -97,6 +130,7 @@ function Dashboard({ pipeline, stories, pubs, go }: { pipeline: Pipeline; storie
         </ul>
       </section>
     </div>
+    </div>
   );
 }
 
@@ -119,6 +153,7 @@ export function App() {
 function Workspace({ me, signOut }: { me: AppUser; signOut: () => void }) {
   const admin = isAdmin(me);
   const tabs = TABS.filter((t) => t.id !== "users" || admin);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [tab, setTab] = useState<Tab>(() => (me.temporary ? "users" : initialTab()));
   const [options, setOptions] = useState<Options | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -158,8 +193,10 @@ function Workspace({ me, signOut }: { me: AppUser; signOut: () => void }) {
 
   async function remove(job: Job) {
     if (!confirm(`¿Borrar "${job.post?.title ?? job.id}" y sus archivos?`)) return;
-    await api.remove(job.id).catch((e: Error) => alert(e.message));
+    const failed = await api.remove(job.id).then(() => false, (e: Error) => (toast(e.message, "error"), true));
+    if (failed) return;
     if (selectedId === job.id) setSelectedId(null);
+    toast("Video eliminado");
     refresh();
   }
 
@@ -168,13 +205,25 @@ function Workspace({ me, signOut }: { me: AppUser; signOut: () => void }) {
 
   return (
     <div className="app">
-      <header className="topbar">
+      <Toasts />
+      <aside className={`sidebar${menuOpen ? " open" : ""}`}>
         <div className="brand">
           <span className="logo">▶</span> TrueStory<b>Maker</b>
         </div>
         <nav className="tabs">
           {tabs.map((t) => (
-            <button key={t.id} className={tab === t.id ? "on" : ""} onClick={() => go(t.id)}>
+            <button
+              key={t.id}
+              className={tab === t.id ? "on" : ""}
+              aria-current={tab === t.id ? "page" : undefined}
+              onClick={() => {
+                go(t.id);
+                setMenuOpen(false);
+              }}
+            >
+              <span className="ico" aria-hidden>
+                {t.icon}
+              </span>
               {t.label}
               {t.id === "stories" && inboxCount > 0 && <span className="count">{inboxCount}</span>}
               {t.id === "publications" && reviewCount > 0 && <span className="count">{reviewCount}</span>}
@@ -190,7 +239,18 @@ function Workspace({ me, signOut }: { me: AppUser; signOut: () => void }) {
             Salir
           </button>
         </div>
-      </header>
+      </aside>
+      <div className="main" onClick={() => menuOpen && setMenuOpen(false)}>
+      <button
+        className="ghost mobile-nav-btn"
+        aria-label="Menú"
+        onClick={(e) => {
+          e.stopPropagation();
+          setMenuOpen((v) => !v);
+        }}
+      >
+        ☰ Menú
+      </button>
 
       {me.temporary && tab !== "users" && (
         <p className="warn-box">
@@ -265,6 +325,7 @@ function Workspace({ me, signOut }: { me: AppUser; signOut: () => void }) {
           </div>
         </main>
       )}
+      </div>
     </div>
   );
 }

@@ -51,6 +51,21 @@ export function StoriesView({
     }
   }
 
+  async function bulk(kind: "approve" | "reject") {
+    const verb = kind === "approve" ? "aprobar" : "rechazar";
+    if (!confirm(`¿${verb[0].toUpperCase()}${verb.slice(1)} ${shown.length} historias?`)) return;
+    const ids = shown.map((s) => s.id);
+    await act(
+      "bulk",
+      async () => {
+        const results = await Promise.allSettled(ids.map((id) => (kind === "approve" ? pipelineApi.approve(id) : pipelineApi.reject(id))));
+        const failed = results.filter((r) => r.status === "rejected").length;
+        if (failed) throw new Error(`${failed} de ${ids.length} fallaron`);
+      },
+      `${ids.length} historias ${kind === "approve" ? "aprobadas" : "rechazadas"}`,
+    );
+  }
+
   async function discover() {
     await act(
       "discover",
@@ -128,6 +143,16 @@ export function StoriesView({
         ))}
       </div>
 
+      {filter === "inbox" && shown.length > 1 && (
+        <div className="actions bulk">
+          <button className="ghost" disabled={!!busy} onClick={() => bulk("approve")}>
+            ✓ Aprobar las {shown.length}
+          </button>
+          <button className="ghost" disabled={!!busy} onClick={() => bulk("reject")}>
+            ✕ Rechazar las {shown.length}
+          </button>
+        </div>
+      )}
       {shown.length === 0 && <p className="muted">No hay historias en esta lista.</p>}
       <ul className="cards">
         {shown.map((s) => (
