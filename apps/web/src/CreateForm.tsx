@@ -5,23 +5,37 @@ import { VoiceField, voicesForLanguage } from "./VoiceField";
 
 export const CAPTION_LABELS: Record<string, string> = { pop: "Pop", karaoke: "Karaoke", boxed: "Resaltado" };
 
+const PREFS_KEY = "tsm:create-prefs";
+
+function loadPrefs(): Record<string, any> {
+  try {
+    return JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}");
+  } catch {
+    return {};
+  }
+}
+
 export function CreateForm({ options, onCreated }: { options: Options; onCreated: (job: Job) => void }) {
+  const [prefs] = useState(loadPrefs);
   const [sourceType, setSourceType] = useState<"url" | "text">("url");
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [subreddit, setSubreddit] = useState("AskReddit");
-  const [commentCount, setCommentCount] = useState(3);
-  const [scriptMode, setScriptMode] = useState<"literal" | "claude">("literal");
-  const [language, setLanguage] = useState<"en" | "es">("en");
-  const [voice, setVoice] = useState<string>(AUTO_VOICE);
-  const [speed, setSpeed] = useState(1.05);
+  const [commentCount, setCommentCount] = useState<number>(prefs.commentCount ?? 3);
+  const [scriptMode, setScriptMode] = useState<"literal" | "claude">(prefs.scriptMode ?? "literal");
+  const [language, setLanguage] = useState<"en" | "es">(prefs.language ?? "en");
+  const [voice, setVoice] = useState<string>(prefs.voice ?? AUTO_VOICE);
+  const [speed, setSpeed] = useState<number>(prefs.speed ?? 1.05);
   const [background, setBackground] = useState<BackgroundChoice>(
-    options.backgrounds[0] ? { type: "clip", category: options.backgrounds[0].name } : { type: "procedural", preset: "sunset" },
+    prefs.background ??
+      (options.backgrounds[0] ? { type: "clip", category: options.backgrounds[0].name } : { type: "procedural", preset: "sunset" }),
   );
-  const [captionStyle, setCaptionStyle] = useState(options.captionStyles[0] ?? "pop");
-  const [music, setMusic] = useState<string | null>(null);
-  const [maxDurationSec, setMaxDurationSec] = useState(90);
+  const [captionStyle, setCaptionStyle] = useState<Options["captionStyles"][number]>(
+    options.captionStyles.includes(prefs.captionStyle) ? prefs.captionStyle : (options.captionStyles[0] ?? "pop"),
+  );
+  const [music, setMusic] = useState<string | null>(options.music.includes(prefs.music) ? prefs.music : null);
+  const [maxDurationSec, setMaxDurationSec] = useState<number>(prefs.maxDurationSec ?? 90);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,7 +60,12 @@ export function CreateForm({ options, onCreated }: { options: Options; onCreated
       maxDurationSec,
     };
     try {
-      onCreated(await api.create(payload));
+      const job = await api.create(payload);
+      localStorage.setItem(
+        PREFS_KEY,
+        JSON.stringify({ commentCount, scriptMode, language, voice, speed, background, captionStyle, music, maxDurationSec }),
+      );
+      onCreated(job);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -96,36 +115,6 @@ export function CreateForm({ options, onCreated }: { options: Options; onCreated
       </div>
 
       <div className="grid2">
-        {sourceType === "url" && (
-          <label className="field">
-            <span>Comentarios a incluir</span>
-            <input type="number" min={0} max={10} value={commentCount} onChange={(e) => setCommentCount(Number(e.target.value))} />
-          </label>
-        )}
-        <label className="field">
-          <span>Duración máxima</span>
-          <select value={maxDurationSec} onChange={(e) => setMaxDurationSec(Number(e.target.value))}>
-            <option value={30}>30 s</option>
-            <option value={60}>60 s</option>
-            <option value={90}>90 s</option>
-            <option value={120}>2 min</option>
-            <option value={180}>3 min</option>
-          </select>
-        </label>
-      </div>
-
-      <div className="grid2">
-        <div className="field">
-          <span>Guion</span>
-          <div className="segmented">
-            <button type="button" className={scriptMode === "literal" ? "on" : ""} onClick={() => setScriptMode("literal")}>
-              Literal
-            </button>
-            <button type="button" className={scriptMode === "claude" ? "on" : ""} onClick={() => setScriptMode("claude")}>
-              Con Claude
-            </button>
-          </div>
-        </div>
         <div className="field">
           <span>Idioma</span>
           <div className="segmented">
@@ -137,12 +126,45 @@ export function CreateForm({ options, onCreated }: { options: Options; onCreated
             </button>
           </div>
         </div>
+        <label className="field">
+          <span>Duración máxima</span>
+          <select value={maxDurationSec} onChange={(e) => setMaxDurationSec(Number(e.target.value))}>
+            <option value={30}>30 s</option>
+            <option value={60}>60 s</option>
+            <option value={90}>90 s</option>
+            <option value={120}>2 min</option>
+            <option value={180}>3 min</option>
+          </select>
+        </label>
       </div>
       {needsClaude && !options.claude && (
         <p className="warn">
           {language === "es" ? "Traducir al español" : "Reescribir"} necesita un modelo para el agente de Guion (Ajustes → Modelos de IA).
         </p>
       )}
+
+      <details className="advanced">
+        <summary>Personalizar (guion, voz, fondo, subtítulos, música)</summary>
+      <div className="form">
+      <div className="grid2">
+        {sourceType === "url" && (
+          <label className="field">
+            <span>Comentarios a incluir</span>
+            <input type="number" min={0} max={10} value={commentCount} onChange={(e) => setCommentCount(Number(e.target.value))} />
+          </label>
+        )}
+        <div className="field">
+          <span>Guion</span>
+          <div className="segmented">
+            <button type="button" className={scriptMode === "literal" ? "on" : ""} onClick={() => setScriptMode("literal")}>
+              Literal
+            </button>
+            <button type="button" className={scriptMode === "claude" ? "on" : ""} onClick={() => setScriptMode("claude")}>
+              Con Claude
+            </button>
+          </div>
+        </div>
+      </div>
 
       <VoiceField
         options={options}
@@ -182,6 +204,8 @@ export function CreateForm({ options, onCreated }: { options: Options; onCreated
           </select>
         </label>
       </div>
+      </div>
+      </details>
 
       {error && <p className="error">{error}</p>}
       <button className="primary" type="submit" disabled={busy || Boolean(options.ttsError)}>
