@@ -73,6 +73,7 @@ import { listVoices, previewVoice } from "./tts";
 import type { SessionUser } from "./auth";
 import { getLlmCall, jobTrace, loadTelemetry, recordAudit, telemetryEvents, telemetrySummary, withTrace } from "./telemetry";
 import { AGENT_FLOW } from "./architecture";
+import { startStudio, studioRoutes } from "./studio";
 
 const assets = assetStore();
 reportOrExit([
@@ -397,6 +398,8 @@ app.delete(
   }),
 );
 
+app.use("/api/studio", studioRoutes());
+
 app.get("/api/publications", (_req, res) => {
   res.json(publications.all().sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
 });
@@ -649,6 +652,7 @@ await loadAIConfig();
 await loadDomain();
 await refreshAccounts(true).catch((e) => console.warn("[zernio] could not load accounts:", (e as Error).message));
 await startAutomation();
+await startStudio();
 app.listen(API_PORT, () => {
   console.log(`[api] http://localhost:${API_PORT}`);
 });

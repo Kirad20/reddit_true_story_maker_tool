@@ -350,3 +350,13 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .advanced summary { cursor: pointer; font-weight: 600; color: var(--muted); }
 .advanced[open] summary { margin-bottom: 14px; color: var(--text); }
 ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 10px; }
+
+/* Estudio social */
+.studio-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; margin-top: 8px; }
+.studio-list { display: flex; flex-direction: column; gap: 8px; }
+.studio-item { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.studio-item p { margin: 0; }
+.studio-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.studio-table th, .studio-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.studio-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin: 12px 0; }
+.studio-insights { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 4px 16px; margin: 10px 0; }

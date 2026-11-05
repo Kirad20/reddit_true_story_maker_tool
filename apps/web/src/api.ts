@@ -222,7 +222,7 @@ type PubEdit = Partial<Pick<Publication, "title" | "description" | "tags">>;
 
 export type ProviderKind = "anthropic" | "openai";
 export type ModelProvider = { id: string; name: string; kind: ProviderKind; baseUrl: string | null };
-export type AgentId = "writer" | "curator" | "splitter" | "script" | "voice" | "metadata";
+export type AgentId = "writer" | "curator" | "splitter" | "script" | "voice" | "metadata" | "studio";
 export type Effort = "low" | "medium" | "high";
 export type AgentModel = { providerId: string; model: string; effort: Effort };
 export type AIConfigView = {
@@ -397,4 +397,52 @@ export type JobTrace = { steps: StepSpan[]; calls: LlmCallSummary[] };
 export const observabilityApi = {
   get: (range: string) => request<Observability>(`/api/observability?range=${encodeURIComponent(range)}`),
   call: (id: string) => request<LlmCall>(`/api/observability/calls/${id}`),
+};
+
+// ---------------------------------------------------------------- Estudio social
+
+export type StudioKind = "post" | "ads" | "seo" | "video" | "plan";
+export type StudioContent =
+  | { kind: "post"; variants: { platform: Platform; text: string; hashtags: string[] }[] }
+  | { kind: "ads"; objective: string; audience: string; variants: { headline: string; primaryText: string; cta: string }[] }
+  | { kind: "seo"; keywords: string[]; title: string; description: string; hashtags: string[] }
+  | { kind: "video"; hook: string; script: string; shots: string[]; durationSec: number }
+  | { kind: "plan"; items: { day: number; platform: Platform; topic: string; format: string }[] };
+export type StudioDraft = {
+  id: string;
+  kind: StudioKind;
+  topic: string;
+  status: "draft" | "approved" | "archived";
+  createdAt: string;
+  content: StudioContent;
+};
+export type StudioStats = { posts: number; views: number; likes: number; comments: number; shares: number; saves: number; clicks: number; engagementRate: number };
+export type StudioAnalytics = {
+  source: "remote" | "local";
+  summary: {
+    totals: StudioStats;
+    byPlatform: Partial<Record<Platform, StudioStats>>;
+    topPosts: { postId: string; platform: Platform; title: string; views: number; likes: number; comments: number; engagementRate: number }[];
+    bestHours: number[];
+  };
+  insights?: string[];
+};
+export type StudioConfig = {
+  brand: { name: string; niche: string; voice: string; audience: string; language: "en" | "es" };
+  automation: { enabled: boolean; intervalHours: number; platforms: Platform[]; maxDrafts: number; lastRun: string | null; theme?: string };
+  ready: boolean;
+};
+
+export const studioApi = {
+  generate: (input: { kind: StudioKind; topic: string; platforms?: Platform[] }) =>
+    request<StudioDraft>("/api/studio/generate", { method: "POST", body: JSON.stringify(input) }),
+  drafts: () => request<StudioDraft[]>("/api/studio/drafts"),
+  setStatus: (id: string, status: StudioDraft["status"]) =>
+    request<StudioDraft>(`/api/studio/drafts/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
+  remove: (id: string) => request<void>(`/api/studio/drafts/${id}`, { method: "DELETE" }),
+  analytics: (insights = false) => request<StudioAnalytics>(`/api/studio/analytics${insights ? "?insights=1" : ""}`),
+  config: () => request<StudioConfig>("/api/studio/config"),
+  saveConfig: (patch: { brand?: Partial<StudioConfig["brand"]>; automation?: Partial<StudioConfig["automation"]> }) =>
+    request<StudioConfig>("/api/studio/config", { method: "PUT", body: JSON.stringify(patch) }),
+  runAgent: () => request<{ ok: boolean }>("/api/studio/automation/run", { method: "POST" }),
 };

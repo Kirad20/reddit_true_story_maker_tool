@@ -8,6 +8,15 @@ Link de Reddit / texto ─► guion (literal o Claude) ─► voz Kokoro + tiemp
                        ─► vista previa en el navegador ─► MP4
 ```
 
+## Estudio social
+
+La pestaña **Estudio** convierte la app en un estudio de redes con agentes de IA (agente «Estudio social», se
+configura en Ajustes → Modelos de IA): genera publicaciones por red, guiones de video (que se envían al pipeline de
+video), anuncios, paquetes SEO y calendarios; muestra estadísticas reales vía Zernio (con respaldo local) y
+recomendaciones de IA; y un agente automático planea la semana y deja borradores para aprobar (nunca publica solo).
+Código en `apps/api/src/studio` con arquitectura hexagonal: `domain.ts` (puro), `application.ts` (casos de uso),
+`ports.ts` y `adapters/` (LLM, Zernio, HTTP); `index.ts` es la raíz de composición. Probado con TDD (`test/studio.*`).
+
 ## Requisitos
 
 - Node 20+ (probado con 24)
