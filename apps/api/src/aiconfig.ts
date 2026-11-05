@@ -14,7 +14,7 @@ export type ModelProvider = {
   baseUrl: string | null;
 };
 
-export type AgentId = "writer" | "curator" | "splitter" | "script" | "voice" | "metadata";
+export type AgentId = "writer" | "curator" | "splitter" | "script" | "voice" | "metadata" | "studio" | "image";
 export const AGENTS: { id: AgentId; label: string; description: string }[] = [
   { id: "writer", label: "Escritor", description: "Escribe las historias originales" },
   { id: "curator", label: "Curador", description: "Puntúa y filtra historias" },
@@ -22,7 +22,9 @@ export const AGENTS: { id: AgentId; label: string; description: string }[] = [
   { id: "script", label: "Guion y traducción", description: "Reescribe el guion y traduce al español" },
   { id: "voice", label: "Director de voz", description: "Elige la voz que mejor encaja con cada historia (voz automática)" },
   { id: "metadata", label: "Publicación", description: "Títulos, descripciones y hashtags" },
-];
+    { id: "image", label: "Imágenes", description: "Genera imágenes para posts (requiere un proveedor OpenAI-compatible)" },
+  { id: "studio", label: "Estudio social", description: "Posts, anuncios, SEO, ideas de video, calendario y análisis" },
+  ];
 
 export type Effort = "low" | "medium" | "high";
 
@@ -37,7 +39,7 @@ const agent = (effort: Effort): AgentModel => ({ providerId: "anthropic", model:
 
 export const DEFAULT_AI: AIConfig = {
   providers: [DEFAULT_PROVIDER],
-  agents: { writer: agent("medium"), curator: agent("low"), splitter: agent("low"), script: agent("low"), voice: agent("low"), metadata: agent("low") },
+  agents: { writer: agent("medium"), curator: agent("low"), splitter: agent("low"), script: agent("low"), voice: agent("low"), metadata: agent("low"), studio: agent("medium"), image: { providerId: "anthropic", model: "gpt-image-1", effort: "low" } },
 };
 
 export const aiConfig = new Doc<AIConfig>("ai", DEFAULT_AI);

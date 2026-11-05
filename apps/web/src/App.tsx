@@ -7,6 +7,7 @@ import { ObservabilityView } from "./ObservabilityView";
 import { PublicationsView } from "./PublicationsView";
 import { SettingsView } from "./SettingsView";
 import { StoriesView } from "./StoriesView";
+import { StudioView } from "./StudioView";
 import { UsersView } from "./UsersView";
 import { Toasts, toast } from "./toast";
 import { PLATFORM_LABEL, api, useJob, usePipelineData, type Job, type Options, type Pipeline, type Publication, type Story } from "./api";
@@ -23,9 +24,10 @@ const STATUS_LABEL: Record<Job["status"], string> = {
   failed: "Falló",
 };
 
-type Tab = "panel" | "stories" | "videos" | "publications" | "observability" | "settings" | "users";
+type Tab = "panel" | "studio" | "stories" | "videos" | "publications" | "observability" | "settings" | "users";
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "panel", label: "Panel", icon: "⌂" },
+  { id: "studio", label: "Estudio", icon: "✦" },
   { id: "stories", label: "Historias", icon: "✎" },
   { id: "videos", label: "Videos", icon: "▶" },
   { id: "publications", label: "Publicaciones", icon: "➤" },
@@ -270,6 +272,7 @@ function Workspace({ me, signOut }: { me: AppUser; signOut: () => void }) {
 
       {!pipeline && !["videos", "users", "observability"].includes(tab) && !loadError && <p className="muted">Cargando…</p>}
       {tab === "panel" && pipeline && <Dashboard pipeline={pipeline} stories={stories} pubs={pubs} go={go} />}
+      {tab === "studio" && <StudioView aiReady={Boolean(pipeline?.capabilities.claude)} goTab={go} />}
       {tab === "stories" && pipeline && <StoriesView pipeline={pipeline} stories={stories} refresh={refreshPipeline} openJob={openJob} />}
       {tab === "publications" && <PublicationsView pubs={pubs} refresh={refreshPipeline} openJob={openJob} tiktokReview={Boolean(pipeline?.settings.publish.platforms.tiktok.reviewDemo)} />}
       {tab === "observability" && <ObservabilityView openJob={openJob} />}

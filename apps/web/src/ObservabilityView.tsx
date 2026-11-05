@@ -16,6 +16,8 @@ const AGENT_LABEL: Record<string, string> = {
   splitter: "Divisor",
   script: "Guion",
   voice: "Director de voz",
+  studio: "Estudio social",
+  image: "Imágenes",
   metadata: "Publicación",
 };
 

@@ -73,6 +73,7 @@ import { listVoices, previewVoice } from "./tts";
 import type { SessionUser } from "./auth";
 import { getLlmCall, jobTrace, loadTelemetry, recordAudit, telemetryEvents, telemetrySummary, withTrace } from "./telemetry";
 import { AGENT_FLOW } from "./architecture";
+import { imageStore, startStudio, studioRoutes } from "./studio";
 
 const assets = assetStore();
 reportOrExit([
@@ -127,6 +128,7 @@ app.get("/api/me", (_req, res) => {
 
 // Media for the preview player and the renderer (supports range requests).
 app.use("/media/jobs", express.static(JOBS_DIR, { index: false }));
+app.use("/media/studio", express.static(imageStore.dir, { index: false }));
 // Backgrounds and music: local assets/ folder or the S3 bucket (proxied, so the bucket can stay private).
 app.use("/media/assets", assets.handler());
 
@@ -397,6 +399,8 @@ app.delete(
   }),
 );
 
+app.use("/api/studio", studioRoutes());
+
 app.get("/api/publications", (_req, res) => {
   res.json(publications.all().sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
 });
@@ -649,6 +653,7 @@ await loadAIConfig();
 await loadDomain();
 await refreshAccounts(true).catch((e) => console.warn("[zernio] could not load accounts:", (e as Error).message));
 await startAutomation();
+await startStudio();
 app.listen(API_PORT, () => {
   console.log(`[api] http://localhost:${API_PORT}`);
 });

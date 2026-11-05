@@ -165,6 +165,8 @@ export const agentsInput = z.object({
     script: z.object({ providerId: z.string(), model: z.string().min(1).max(120), effort }),
     voice: z.object({ providerId: z.string(), model: z.string().min(1).max(120), effort }),
     metadata: z.object({ providerId: z.string(), model: z.string().min(1).max(120), effort }),
+    studio: z.object({ providerId: z.string(), model: z.string().min(1).max(120), effort }),
+    image: z.object({ providerId: z.string(), model: z.string().min(1).max(120), effort }),
   }),
 });
 

@@ -178,3 +178,30 @@ export async function publishVideo(
   }
   return { remoteId: String(target?.platformPostId ?? body?.post?._id ?? ""), url: target?.platformPostUrl ?? null };
 }
+
+async function uploadImage(filePath: string): Promise<string> {
+  const file = await fs.readFile(filePath);
+  const presigned = unwrap<{ uploadUrl: string; publicUrl: string }>(
+    await zernio().media.getMediaPresignedUrl({ body: { filename: filePath.split(/[\\/]/).pop() || "image.png", contentType: "image/png", size: file.byteLength } } as never),
+    "getMediaPresignedUrl",
+  );
+  const put = await fetch(presigned.uploadUrl, { method: "PUT", headers: { "Content-Type": "image/png" }, body: file });
+  if (!put.ok) throw new PublishError(`Zernio media upload failed: ${put.status}`, put.status >= 500);
+  return presigned.publicUrl;
+}
+
+/** Posts right away: text-only (e.g. Facebook) or with an image given by its local file path. */
+export async function publishPost(platform: Platform, content: string, imagePath: string | null): Promise<{ url: string | null }> {
+  const account = await requireAccount(platform);
+  const mediaItems = imagePath ? [{ type: "image", url: await uploadImage(imagePath) }] : undefined;
+  const result = await zernio().posts.createPost({
+    body: { content, mediaItems, platforms: [{ platform, accountId: account._id }], publishNow: true },
+  } as never);
+  const body = (result.data ?? result.error) as { post?: any } | undefined;
+  const target = body?.post?.platforms?.find((p: { platform: string }) => p.platform === platform);
+  if (!target) unwrap(result as never, "createPost");
+  if (target?.status === "failed" || target?.error) {
+    throw new PublishError(`Zernio ${platform}: ${target.errorMessage ?? target.error ?? "publish failed"}`, false);
+  }
+  return { url: target?.platformPostUrl ?? null };
+}
