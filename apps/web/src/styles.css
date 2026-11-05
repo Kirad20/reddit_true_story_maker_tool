@@ -59,6 +59,7 @@ h2 { margin: 0 0 14px; font-size: 18px; }
 .platform.youtube { color: #ff5c5c; }
 .platform.tiktok { color: #4de8f4; }
 .platform.facebook { color: #6aa5ff; }
+.platform.instagram { color: #f58ac0; }
 .badge.candidate, .badge.needs_review { color: var(--warn); border-color: #5a4a20; }
 .badge.approved, .badge.scheduled { color: var(--accent-2); border-color: #5a4220; }
 .badge.produced, .badge.published { color: var(--ok); border-color: #1f5a43; }

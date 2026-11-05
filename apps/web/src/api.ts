@@ -100,9 +100,9 @@ export const api = {
 
 // ---------------------------------------------------------------- pipeline
 
-export type Platform = "youtube" | "tiktok" | "facebook";
-export const PLATFORMS: Platform[] = ["youtube", "tiktok", "facebook"];
-export const PLATFORM_LABEL: Record<Platform, string> = { youtube: "YouTube", tiktok: "TikTok", facebook: "Facebook" };
+export type Platform = "youtube" | "tiktok" | "facebook" | "instagram";
+export const PLATFORMS: Platform[] = ["youtube", "tiktok", "facebook", "instagram"];
+export const PLATFORM_LABEL: Record<Platform, string> = { youtube: "YouTube", tiktok: "TikTok", facebook: "Facebook", instagram: "Instagram" };
 
 export type Story = {
   id: string;
@@ -197,6 +197,7 @@ export type Settings = {
       youtube: { enabled: boolean; privacy: "private" | "unlisted" | "public" };
       tiktok: { enabled: boolean; privacy: TikTokPrivacy; reviewDemo: boolean };
       facebook: { enabled: boolean };
+  instagram: { enabled: boolean };
     };
   };
 };
@@ -206,13 +207,7 @@ export type AccountStatus = {
   configured: boolean;
   connected: boolean;
   accountName: string | null;
-  /** App user who connected it. */
-  linkedBy: string | null;
   note: string | null;
-  /** Better Auth social provider used to connect it. */
-  provider: "google" | "tiktok" | "facebook";
-  /** Redirect URI to register in the platform's developer app. */
-  redirectUri: string;
 };
 
 export type Pipeline = {
@@ -235,7 +230,7 @@ export type AIConfigView = {
   agents: Record<AgentId, AgentModel>;
   agentMeta: { id: AgentId; label: string; description: string }[];
   agentStatus: Record<AgentId, string | null>;
-  credentials: { name: string; group: "reddit" | "youtube" | "tiktok" | "facebook"; label: string; mask: string }[];
+  credentials: { name: string; group: "reddit" | "zernio"; label: string; mask: string }[];
 };
 /** apiKey: undefined keeps the stored key, "" removes it. */
 export type ProviderInput = ModelProvider & { apiKey?: string | null };
@@ -276,8 +271,8 @@ export const pipelineApi = {
   publishNow: (id: string) => request<Publication>(`/api/publications/${id}/publish-now`, { method: "POST" }),
   cancelPublication: (id: string) => request<Publication>(`/api/publications/${id}/cancel`, { method: "POST" }),
   disconnect: (p: Platform) => request<AccountStatus[]>(`/api/auth/${p}/disconnect`, { method: "POST" }),
-  facebookPages: () => request<{ pages: { id: string; name: string }[]; pageId: string | null }>("/api/auth/facebook/pages"),
-  selectFacebookPage: (pageId: string) => request<AccountStatus[]>("/api/auth/facebook/page", { method: "POST", body: JSON.stringify({ pageId }) }),
+  connect: (platform: Platform) => request<{ url: string }>(`/api/auth/${platform}/connect`, { method: "POST" }),
+  refreshAccounts: () => request<AccountStatus[]>("/api/auth/refresh", { method: "POST" }),
 };
 
 /** Pipeline snapshot + stories + publications, refreshed on server events. */

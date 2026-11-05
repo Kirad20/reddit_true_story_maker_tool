@@ -56,7 +56,7 @@ function Dashboard({ pipeline, stories, pubs, go }: { pipeline: Pipeline; storie
 
   const missing: string[] = [];
   if (!pipeline.capabilities.claude) missing.push("un modelo para el Escritor (Ajustes → Modelos de IA)");
-  if (connected.length === 0) missing.push("conectar al menos una cuenta (YouTube, TikTok o Facebook)");
+  if (connected.length === 0) missing.push("conectar al menos una cuenta (YouTube, TikTok, Facebook o Instagram) con Zernio");
 
   const todo = steps[0].value + steps[3].value;
   const setup = [

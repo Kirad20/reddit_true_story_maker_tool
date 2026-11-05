@@ -98,6 +98,7 @@ export const settingsSchema = z.object({
         reviewDemo: z.boolean().default(false),
       }),
       facebook: z.object({ enabled: z.boolean() }),
+      instagram: z.object({ enabled: z.boolean() }),
     }),
   }),
 });

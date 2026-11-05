@@ -302,7 +302,7 @@ export function ModelsSettings({ onSaved }: { onSaved: () => void }) {
   );
 }
 
-export function CredentialsSettings({ group, onSaved }: { group: "reddit" | "youtube" | "tiktok" | "facebook"; onSaved: () => void }) {
+export function CredentialsSettings({ group, onSaved }: { group: "reddit" | "zernio"; onSaved: () => void }) {
   const [config, setConfig] = useState<AIConfigView | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);

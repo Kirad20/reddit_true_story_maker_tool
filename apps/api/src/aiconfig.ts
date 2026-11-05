@@ -18,7 +18,7 @@ export type AgentId = "writer" | "curator" | "splitter" | "script" | "voice" | "
 export const AGENTS: { id: AgentId; label: string; description: string }[] = [
   { id: "writer", label: "Escritor", description: "Escribe las historias originales" },
   { id: "curator", label: "Curador", description: "Puntúa y filtra historias" },
-  { id: "splitter", label: "Divisor en partes", description: "Decide si y dónde cortar para TikTok/Facebook" },
+  { id: "splitter", label: "Divisor en partes", description: "Decide si y dónde cortar para TikTok/Facebook/Instagram" },
   { id: "script", label: "Guion y traducción", description: "Reescribe el guion y traduce al español" },
   { id: "voice", label: "Director de voz", description: "Elige la voz que mejor encaja con cada historia (voz automática)" },
   { id: "metadata", label: "Publicación", description: "Títulos, descripciones y hashtags" },
@@ -48,12 +48,7 @@ export const CREDENTIALS = [
   { name: "redditapis_key", group: "reddit", label: "redditapis.com API key" },
   { name: "reddit_client_id", group: "reddit", label: "Reddit API client id (acceso aprobado)" },
   { name: "reddit_client_secret", group: "reddit", label: "Reddit API client secret" },
-  { name: "youtube_client_id", group: "youtube", label: "Google OAuth client id" },
-  { name: "youtube_client_secret", group: "youtube", label: "Google OAuth client secret" },
-  { name: "tiktok_client_key", group: "tiktok", label: "TikTok client key" },
-  { name: "tiktok_client_secret", group: "tiktok", label: "TikTok client secret" },
-  { name: "facebook_app_id", group: "facebook", label: "Meta app id" },
-  { name: "facebook_app_secret", group: "facebook", label: "Meta app secret" },
+  { name: "zernio_api_key", group: "zernio", label: "Zernio API key" },
 ] as const;
 export type CredentialName = (typeof CREDENTIALS)[number]["name"];
 
@@ -126,12 +121,7 @@ async function importLegacyEnv(): Promise<void> {
     ["redditapis_key", env.REDDITAPIS_KEY],
     ["reddit_client_id", env.REDDIT_CLIENT_ID],
     ["reddit_client_secret", env.REDDIT_CLIENT_SECRET],
-    ["youtube_client_id", env.YOUTUBE_CLIENT_ID],
-    ["youtube_client_secret", env.YOUTUBE_CLIENT_SECRET],
-    ["tiktok_client_key", env.TIKTOK_CLIENT_KEY],
-    ["tiktok_client_secret", env.TIKTOK_CLIENT_SECRET],
-    ["facebook_app_id", env.FACEBOOK_APP_ID],
-    ["facebook_app_secret", env.FACEBOOK_APP_SECRET],
+    ["zernio_api_key", env.ZERNIO_API_KEY],
   ];
   for (const [name, value] of legacy) if (value && !current[name]) values[name] = value;
 

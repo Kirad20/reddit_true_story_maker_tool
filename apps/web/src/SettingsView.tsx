@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { authClient } from "./auth";
 import { CAPTION_LABELS } from "./CreateForm";
 import { CredentialsSettings, ModelsSettings } from "./ModelsSettings";
 import { voiceLabel } from "./VoiceField";
@@ -39,59 +38,38 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
   );
 }
 
-/** Connect through Better Auth: the account is linked to the logged-in user and used to publish. */
+/** Zernio handles the login to the platform: the browser goes there and comes back to this page. */
 async function connect(a: AccountStatus, onError: (message: string) => void) {
-  const { error } = await authClient.linkSocial({
-    provider: a.provider,
-    // Absolute: in development the provider calls back the API (:8787), not Vite (:5173).
-    callbackURL: `${location.origin}/?tab=settings&connected=${a.platform}`,
-    errorCallbackURL: `${location.origin}/?tab=settings&linkFailed=${a.platform}`,
-  });
-  if (error) onError(error.message ?? `No se pudo conectar ${PLATFORM_LABEL[a.platform]}`);
+  try {
+    location.href = (await pipelineApi.connect(a.platform)).url;
+  } catch (e) {
+    onError((e as Error).message || `No se pudo conectar ${PLATFORM_LABEL[a.platform]}`);
+  }
 }
 
 function Accounts({ pipeline, refresh }: { pipeline: Pipeline; refresh: () => void }) {
   const [connectError, setConnectError] = useState<string | null>(null);
-  const [pages, setPages] = useState<{ pages: { id: string; name: string }[]; pageId: string | null } | null>(null);
-  const fb = pipeline.accounts.find((a) => a.platform === "facebook");
-  useEffect(() => {
-    if (fb?.connected) pipelineApi.facebookPages().then(setPages, () => {});
-  }, [fb?.connected]);
+  const zernioReady = pipeline.accounts.every((a) => a.configured);
 
   return (
     <div className="accounts">
       {connectError && <p className="error">{connectError}</p>}
+      <details className="creds" open={!zernioReady}>
+        <summary className="small">API key de Zernio</summary>
+        <CredentialsSettings group="zernio" onSaved={refresh} />
+      </details>
       {pipeline.accounts.map((a) => (
         <div key={a.platform} className="account">
           <div className="account-body">
             <strong className={`platform ${a.platform}`}>{PLATFORM_LABEL[a.platform]}</strong>
             <div className="small muted">
               {a.connected
-                ? `Conectado${a.accountName ? `: ${a.accountName}` : ""}${a.linkedBy ? ` · por ${a.linkedBy}` : ""}`
+                ? `Conectado${a.accountName ? `: ${a.accountName}` : ""}`
                 : a.configured
                   ? "Sin conectar"
-                  : "Faltan las credenciales de tu app (abajo)"}
+                  : "Falta la API key de Zernio (arriba)"}
             </div>
             {a.note && <div className="small muted">{a.note}</div>}
-            {a.platform === "facebook" && a.connected && pages && pages.pages.length > 1 && (
-              <select
-                value={pages.pageId ?? ""}
-                onChange={(e) => pipelineApi.selectFacebookPage(e.target.value).then(refresh)}
-              >
-                {pages.pages.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            )}
-            <details className="creds">
-              <summary className="small">Credenciales de la app de {PLATFORM_LABEL[a.platform]}</summary>
-              <p className="hint">
-                Redirect URI para registrar en la app: <code>{a.redirectUri}</code>
-              </p>
-              <CredentialsSettings group={a.platform} onSaved={refresh} />
-            </details>
           </div>
           {a.connected ? (
             <button className="ghost" onClick={() => pipelineApi.disconnect(a.platform).then(refresh)}>
@@ -99,7 +77,7 @@ function Accounts({ pipeline, refresh }: { pipeline: Pipeline; refresh: () => vo
             </button>
           ) : (
             <button className="ghost" disabled={!a.configured} onClick={() => connect(a, setConnectError)}>
-              Conectar
+              Conectar con Zernio
             </button>
           )}
         </div>
@@ -119,6 +97,10 @@ export function SettingsView({ pipeline, options, refresh }: { pipeline: Pipelin
     ? `${PLATFORM_LABEL[linkFailed as Platform] ?? linkFailed}: ${params.get("error_description") ?? params.get("error") ?? "error desconocido"}`
     : params.get("authError");
   const connected = params.get("connected");
+  // Back from Zernio: reload the connected accounts right away instead of waiting for the cache.
+  useEffect(() => {
+    if (connected) pipelineApi.refreshAccounts().then(refresh, () => {});
+  }, [connected]);
 
   // The pipeline snapshot is refetched on every server event: only take it while there are no
   // unsaved edits, otherwise a background refresh would wipe what the user is typing.
@@ -176,16 +158,9 @@ export function SettingsView({ pipeline, options, refresh }: { pipeline: Pipelin
       <section className="panel">
         <h2>Cuentas para publicar</h2>
         <p className="muted small">
-          Cada plataforma necesita tu propia app de desarrollador: pega sus credenciales en la tarjeta de la plataforma, registra el redirect
-          URI que aparece ahí y pulsa Conectar. La cuenta queda vinculada a tu usuario (Better Auth) y el pipeline publica con ella. Ver
-          README.
+          YouTube, TikTok, Facebook e Instagram se conectan y publican a través de Zernio: pega tu API key, pulsa Conectar con Zernio en cada
+          plataforma e inicia sesión allí. Ver README.
         </p>
-        {pipeline.accounts.some((a) => /\/\/(localhost|127\.0\.0\.1)[:/]/.test(a.redirectUri)) && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname) && (
-          <p className="warn small">
-            El servidor no conoce su dominio público, por eso el redirect URI apunta a localhost. En Coolify asigna el dominio al
-            servicio <code>app</code> (puerto 8787) o define <code>PUBLIC_URL={location.origin}</code> y vuelve a desplegar.
-          </p>
-        )}
         <Accounts pipeline={pipeline} refresh={refresh} />
       </section>
 
@@ -303,7 +278,7 @@ export function SettingsView({ pipeline, options, refresh }: { pipeline: Pipelin
         <Toggle
           checked={s.parts.enabled}
           onChange={(v) => set((d) => void (d.parts.enabled = v))}
-          label="Dividir historias largas en partes para TikTok y Facebook (YouTube siempre recibe el video completo)"
+          label="Dividir historias largas en partes para TikTok, Facebook e Instagram (YouTube siempre recibe el video completo)"
         />
         <p className="hint">
           Un agente elige dónde cortar (en momentos de suspenso) o la deja en una sola parte. Cada parte muestra “Parte k/N”, la voz la

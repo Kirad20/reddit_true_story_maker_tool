@@ -183,7 +183,7 @@ export function StoriesView({
             )}
             {s.split && (
               <p className="small muted">
-                <span className="flag parts">{s.split.parts > 1 ? `${s.split.parts} partes en TikTok/Facebook` : "1 parte"}</span> {s.split.reason}
+                <span className="flag parts">{s.split.parts > 1 ? `${s.split.parts} partes en TikTok/Facebook/Instagram` : "1 parte"}</span> {s.split.reason}
               </p>
             )}
             {s.url && (

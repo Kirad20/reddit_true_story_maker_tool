@@ -15,7 +15,7 @@ import {
 } from "./domain";
 import { createJob, getJob, isBusy, jobEvents, redoJob, startRender, type Job } from "./jobs";
 import { publishers } from "./publish";
-import { tiktokCreatorInfo } from "./publish/tiktok";
+import { tiktokCreatorInfo } from "./zernio";
 import { PublishError } from "./publish/types";
 import { nextSlot } from "./schedule";
 import { partLabel } from "./script";
@@ -128,8 +128,8 @@ async function createStoryJob(story: Story, body: string, comments: Story["comme
 }
 
 /**
- * One full video (YouTube, and TikTok/Facebook when not split) plus, when the
- * split planner finds good cut points, one video per part for TikTok/Facebook.
+ * One full video (YouTube, and TikTok/Facebook/Instagram when not split) plus, when the
+ * split planner finds good cut points, one video per part for TikTok/Facebook/Instagram.
  */
 export async function produceStory(storyId: string): Promise<Story> {
   return withTrace({ storyId }, () => produce(storyId));
@@ -154,7 +154,7 @@ async function produce(storyId: string): Promise<Story> {
   }
   await log(
     "info",
-    `Producing "${story.title}": full video${partJobs.length ? ` + ${partJobs.length} parts for TikTok/Facebook` : ""} (${plan.reason})`,
+    `Producing "${story.title}": full video${partJobs.length ? ` + ${partJobs.length} parts for TikTok/Facebook/Instagram` : ""} (${plan.reason})`,
   );
   return stories.update(story.id, {
     status: "producing",
@@ -234,7 +234,7 @@ export function enabledPlatforms(): Platform[] {
   return PLATFORMS.filter((p) => cfg[p].enabled && publishers[p].status().connected);
 }
 
-/** Which video(s) each platform gets: YouTube always the full one; TikTok/Facebook the parts if any. */
+/** Which video(s) each platform gets: YouTube always the full one; TikTok/Facebook/Instagram the parts if any. */
 export function videosFor(platform: Platform, story: Pick<Story, "jobId" | "partJobIds">) {
   const parts = story.partJobIds ?? [];
   if (platform === "youtube" || parts.length === 0) return story.jobId ? [{ jobId: story.jobId, part: null }] : [];

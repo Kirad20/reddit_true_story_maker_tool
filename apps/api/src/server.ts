@@ -53,9 +53,8 @@ import {
   startAutomation,
 } from "./automation";
 import { PLATFORMS, loadDomain, publications, settings, stories, storyJobIds, type Platform, type Settings } from "./domain";
-import { accountStatuses, facebook, loadAccounts, onPlatformLinked, publishers } from "./publish";
-import { accounts } from "./publish/accounts";
-import { tiktokCreatorInfo } from "./publish/tiktok";
+import { accountStatuses, publishers } from "./publish";
+import { connectUrl, refreshAccounts, tiktokCreatorInfo } from "./zernio";
 import { hasRedditAccess } from "./reddit";
 import {
   agentsInput,
@@ -298,11 +297,11 @@ app.delete(
 
 // ---------------------------------------------------------------- pipeline
 
-app.get("/api/pipeline", (_req, res) => {
+app.get("/api/pipeline", route(async (_req, res) => {
   res.json({
     status: pipelineStatus(),
     settings: settings.get(),
-    accounts: accountStatuses(),
+    accounts: await refreshAccounts().then(accountStatuses, accountStatuses),
     capabilities: {
       claude: agentReady("writer"),
       reddit: hasRedditAccess(),
@@ -311,7 +310,7 @@ app.get("/api/pipeline", (_req, res) => {
     },
     activity: activityLog().slice(0, 100),
   });
-});
+}));
 
 app.put(
   "/api/settings",
@@ -540,7 +539,7 @@ app.post(
   }),
 );
 
-// ---------------------------------------------------------------- accounts (OAuth)
+// ---------------------------------------------------------------- accounts (Zernio)
 
 const platformParam = (req: Request): Platform => {
   const platform = String(req.params.platform) as Platform;
@@ -548,8 +547,21 @@ const platformParam = (req: Request): Platform => {
   return platform;
 };
 
-// Connecting happens in the browser through Better Auth (authClient.linkSocial → /api/identity/callback/<provider>).
-onPlatformLinked((event) => void log(event.ok ? "info" : "error", event.message));
+// Connecting happens at Zernio: the browser goes to the URL returned here and comes back to Ajustes.
+app.post(
+  "/api/auth/:platform/connect",
+  route(async (req, res) => {
+    res.json({ url: await connectUrl(platformParam(req)) });
+  }),
+);
+
+app.post(
+  "/api/auth/refresh",
+  route(async (_req, res) => {
+    await refreshAccounts(true);
+    res.json(accountStatuses());
+  }),
+);
 
 app.post(
   "/api/auth/:platform/disconnect",
@@ -557,22 +569,10 @@ app.post(
     const platform = platformParam(req);
     await publishers[platform].disconnect();
     await log("info", `Disconnected ${platform}`);
+    await refreshAccounts(true);
     res.json(accountStatuses());
   }),
 );
-
-app.post(
-  "/api/auth/facebook/page",
-  route(async (req, res) => {
-    await facebook.selectPage(String(req.body?.pageId ?? ""));
-    res.json(accountStatuses());
-  }),
-);
-
-app.get("/api/auth/facebook/pages", (_req, res) => {
-  const account = accounts.get().facebook;
-  res.json({ pages: account?.pages.map(({ id, name }) => ({ id, name })) ?? [], pageId: account?.pageId ?? null });
-});
 
 // Pipeline-wide live updates (activity, stories, publications).
 app.get("/api/pipeline/events", (req, res) => {
@@ -647,7 +647,7 @@ await loadJobs();
 await loadTelemetry();
 await loadAIConfig();
 await loadDomain();
-await loadAccounts();
+await refreshAccounts(true).catch((e) => console.warn("[zernio] could not load accounts:", (e as Error).message));
 await startAutomation();
 app.listen(API_PORT, () => {
   console.log(`[api] http://localhost:${API_PORT}`);
