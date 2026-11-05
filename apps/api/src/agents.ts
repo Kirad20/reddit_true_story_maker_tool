@@ -158,6 +158,7 @@ const PLATFORM_RULES: Record<Platform, string> = {
   youtube: "YouTube Shorts: title max 90 characters and include #shorts at the end of the description; 5-8 tags without '#'.",
   tiktok: "TikTok: the caption is the title field, max 150 characters including 3-5 hashtags; description can be empty; tags without '#'.",
   facebook: "Facebook Reels: title max 80 characters; description 1-2 sentences plus 3-5 hashtags; tags without '#'.",
+  instagram: "Instagram Reels: title max 80 characters; description 1-2 sentences plus 3-5 hashtags (the caption is the description); tags without '#'.",
 };
 
 const METADATA_SCHEMA = {

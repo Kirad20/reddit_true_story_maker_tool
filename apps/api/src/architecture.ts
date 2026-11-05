@@ -40,7 +40,7 @@ export const AGENT_FLOW: { pipeline: FlowStage[]; video: FlowStage[]; publishing
       step: null,
       where: "apps/api/src/splitter.ts (planSplit)",
       description:
-        "Para historias largas, el Divisor decide si conviene publicar en 2-3 partes para TikTok/Facebook y en qué frase cortar. Sin modelo usa un corte por longitud.",
+        "Para historias largas, el Divisor decide si conviene publicar en 2-3 partes para TikTok/Facebook/Instagram y en qué frase cortar. Sin modelo usa un corte por longitud.",
     },
   ],
   video: [

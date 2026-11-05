@@ -1,60 +1,31 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { approvePublication, publishNow, publishToTikTok } from "../src/automation";
 import { DEFAULT_SETTINGS, publications, settings, type Publication } from "../src/domain";
-import { tiktok } from "../src/publish/tiktok";
-import { tokenSource } from "../src/publish/tokens";
+import type { TikTokCreatorInfo } from "../src/publish/types";
 
-process.env.TIKTOK_POLL_MS = "1";
-
-type Call = { url: string; body: any };
-let calls: Call[] = [];
-let creator: Record<string, unknown>;
-
-function fakeTikTok(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  const url = String(input instanceof Request ? input.url : input);
-  const body = typeof init?.body === "string" ? JSON.parse(init.body) : null;
-  calls.push({ url, body });
-  const json = (data: unknown) => Promise.resolve(new Response(JSON.stringify({ data, error: { code: "ok" } }), { headers: { "Content-Type": "application/json" } }));
-  if (url.endsWith("/post/publish/creator_info/query/")) return json(creator);
-  if (url.endsWith("/post/publish/video/init/")) return json({ publish_id: "p-1", upload_url: "https://upload.tiktok.test/1" });
-  if (url.startsWith("https://upload.tiktok.test/")) return Promise.resolve(new Response(null, { status: 201 }));
-  if (url.endsWith("/post/publish/status/fetch/")) return json({ status: "PUBLISH_COMPLETE", publicaly_available_post_id: ["123"] });
-  throw new Error(`unexpected fetch ${url}`);
-}
-
-let video = "";
-beforeAll(() => {
-  video = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "tsm-tt-")), "final.mp4");
-  fs.writeFileSync(video, Buffer.alloc(1024));
-});
+const creator = vi.hoisted(() => ({ value: null as unknown as TikTokCreatorInfo }));
+vi.mock("../src/zernio", async (original) => ({ ...(await original<typeof import("../src/zernio")>()), tiktokCreatorInfo: async () => creator.value }));
 
 beforeEach(async () => {
-  calls = [];
-  creator = {
-    creator_nickname: "Demo",
-    creator_avatar_url: "https://a.test/x.png",
-    privacy_level_options: ["SELF_ONLY", "PUBLIC_TO_EVERYONE"],
-    comment_disabled: false,
-    duet_disabled: true,
-    stitch_disabled: false,
-    max_video_post_duration_sec: 600,
+  creator.value = {
+    nickname: "Demo",
+    username: null,
+    avatarUrl: "https://a.test/x.png",
+    privacyOptions: ["SELF_ONLY", "PUBLIC_TO_EVERYONE"],
+    commentDisabled: false,
+    duetDisabled: true,
+    stitchDisabled: false,
+    maxVideoPostDurationSec: 600,
   };
-  vi.stubGlobal("fetch", fakeTikTok);
-  vi.spyOn(tokenSource, "accessToken").mockResolvedValue("TT");
   const s = structuredClone(DEFAULT_SETTINGS);
   s.publish.platforms.tiktok.reviewDemo = true;
   await settings.set(s);
 });
 
 afterEach(() => {
-  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
-const input = { filePath: "", title: "Title", description: "", tags: [], aiGenerated: true };
 const choices = { privacy: "PUBLIC_TO_EVERYONE" as const, allowComment: true, allowDuet: true, allowStitch: false, brandOrganic: false, brandedContent: true };
 
 async function newPub(): Promise<Publication> {
@@ -76,28 +47,6 @@ async function newPub(): Promise<Publication> {
     attempts: 0,
   });
 }
-
-describe("TikTok publisher with Direct Post choices", () => {
-  it("sends the creator's privacy, interactions (respecting creator_info) and disclosure", async () => {
-    const result = await tiktok.publish({ ...input, filePath: video }, { privacy: "SELF_ONLY", post: choices });
-    expect(result.url).toBe("https://www.tiktok.com/video/123");
-    const init = calls.find((c) => c.url.endsWith("/video/init/"))!.body.post_info;
-    expect(init).toMatchObject({
-      privacy_level: "PUBLIC_TO_EVERYONE",
-      disable_comment: false,
-      disable_duet: true, // disabled in the creator's TikTok settings
-      disable_stitch: true,
-      brand_organic_toggle: false,
-      brand_content_toggle: true,
-      is_aigc: true,
-    });
-  });
-
-  it("never swaps a privacy level the creator picked", async () => {
-    creator.privacy_level_options = ["SELF_ONLY"];
-    await expect(tiktok.publish({ ...input, filePath: video }, { privacy: "SELF_ONLY", post: choices })).rejects.toThrow(/no longer allows/);
-  });
-});
 
 describe("TikTok review flag", () => {
   it("blocks approving or posting TikTok without the Direct Post screen", async () => {

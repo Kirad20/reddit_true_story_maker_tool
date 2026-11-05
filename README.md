@@ -42,7 +42,7 @@ queda solo para puertos y servicios locales (ver `.env.example`).
   - o client id/secret de la API oficial, solo si Reddit te aprobó acceso. Según su
     [Responsible Builder Policy](https://support.reddithelp.com/hc/en-us/articles/42728983564564-Responsible-Builder-Policy)
     todo acceso requiere aprobación (escrita para uso comercial). Sin nada de esto, usa **Pegar texto**.
-- **Cuentas para publicar**: credenciales de tu app de YouTube, TikTok y Facebook (ver abajo).
+- **Cuentas para publicar**: conecta YouTube, TikTok, Facebook e Instagram con Zernio (ver abajo).
 
 Si tenías estas claves en un `.env` antiguo, la API las importa a Ajustes una vez al arrancar.
 
@@ -130,33 +130,20 @@ Cada video tiene además su **traza interna** (pasos y llamadas en orden). Los r
 `data/telemetry/*.jsonl`. El costo es una estimación con los precios públicos de Claude; modelos sin precio
 conocido (p. ej. GPT en pasarelas) muestran "—".
 
-## Publicar en YouTube, TikTok y Facebook
+## Publicar en YouTube, TikTok, Facebook e Instagram
 
-Cada plataforma usa **tu propia app de desarrollador** y su API oficial. Pega sus credenciales en Ajustes →
-Cuentas para publicar (tarjeta de cada plataforma), registra el redirect URI que muestra la tarjeta y pulsa
-**Conectar**:
+El login de cada plataforma y la publicación pasan por [Zernio](https://zernio.com) (SDK `@zernio/node`), así que no
+necesitas crear apps de desarrollador. Define `ZERNIO_API_KEY` (o pégala en Ajustes → Cuentas para publicar) y pulsa
+**Conectar con Zernio** en cada plataforma: inicias sesión en Zernio y vuelves a Ajustes con la cuenta conectada.
+Comprueba la clave con `npm run zernio:check -w @tsm/api`.
 
-| Plataforma | Redirect URI (local) |
-| --- | --- |
-| YouTube | `http://localhost:8787/api/identity/callback/google` |
-| TikTok | `http://localhost:8787/api/identity/callback/tiktok` |
-| Facebook | `http://localhost:8787/api/identity/callback/facebook` |
-
-La conexión la hace **Better Auth** (el mismo sistema del login): la cuenta de Google, TikTok o Facebook queda
-vinculada a tu usuario, sus tokens se guardan cifrados en `data/auth.db` y Better Auth los renueva solo cuando
-caducan. La última cuenta conectada en cada plataforma es la que usa el pipeline para publicar; la tarjeta
-muestra qué usuario la conectó. Estas cuentas solo sirven para publicar: no permiten iniciar sesión en la app.
-Si borras a un usuario, se desconectan las cuentas que vinculó.
-
-Si venías de una versión anterior, vuelve a conectar las cuentas (cambió el redirect URI).
-
-| Plataforma | Dónde crear la app | Credenciales en Ajustes | Límite hasta la revisión de la plataforma |
-| --- | --- | --- | --- |
-| YouTube | Google Cloud Console → API "YouTube Data API v3" → credencial OAuth (aplicación web) | Client id + client secret | Videos subidos por apps no verificadas quedan privados |
-| TikTok | developers.tiktok.com → app con "Login Kit" + "Content Posting API" (Direct Post) | Client key + client secret | Solo publicaciones privadas hasta pasar la auditoría |
-| Facebook | developers.facebook.com → app tipo Business con permisos de Páginas | App id + app secret | Modo desarrollo: solo cuentas con rol en la app |
-
-Los videos se marcan como contenido generado con IA (`containsSyntheticMedia` en YouTube, `is_aigc` en TikTok).
+- El video se sube al almacenamiento de Zernio y se publica al momento con `publishNow`; las programaciones y los límites
+  diarios los sigue gestionando esta app.
+- Instagram publica Reels y, como TikTok y Facebook, recibe las partes de las historias largas (YouTube siempre el video completo).
+- TikTok conserva la pantalla Direct Post (privacidad, interacciones y divulgación) con los datos del creador que da Zernio.
+- Los videos se marcan como contenido generado con IA (`containsSyntheticMedia` en YouTube, `isAiGenerated` en Facebook e Instagram).
+- Los límites de cada plataforma (p. ej. TikTok solo privado hasta su auditoría) dependen de la cuenta de Zernio.
+- Los tokens los guarda Zernio; la API key queda en `data/secrets.json`.
 
 ### Términos y privacidad (páginas públicas)
 
@@ -187,7 +174,7 @@ adáptalo a tu caso (no es asesoría legal).
 | `apps/api` | Node + Express: jobs, Reddit, Claude, llamada a la voz, render con Remotion |
 | `apps/api/src/automation.ts` | Orquestador: descubrir → curar → producir → publicar, horarios y reintentos |
 | `apps/api/src/agents.ts` | Agentes Claude: escritor de historias, curador, metadatos de publicación |
-| `apps/api/src/publish/` | Publicadores YouTube, TikTok y Facebook (OAuth + APIs oficiales) |
+| `apps/api/src/publish/` | Publicación y login de YouTube, TikTok, Facebook e Instagram vía Zernio |
 | `apps/api/src/auth.ts` | Login (Better Auth + plugin admin), usuario temporal de instalación, protección de la API |
 | `data/` | Historias, publicaciones, ajustes, actividad y tokens de tus cuentas (`accounts.json`) |
 | `packages/video` | Composición Remotion compartida (fondo, tarjeta de Reddit, subtítulos) |

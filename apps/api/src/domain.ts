@@ -32,8 +32,8 @@ export type Story = {
 
 export const storyJobIds = (s: Story): string[] => [s.jobId, ...(s.partJobIds ?? [])].filter((id): id is string => Boolean(id));
 
-export type Platform = "youtube" | "tiktok" | "facebook";
-export const PLATFORMS: Platform[] = ["youtube", "tiktok", "facebook"];
+export type Platform = "youtube" | "tiktok" | "facebook" | "instagram";
+export const PLATFORMS: Platform[] = ["youtube", "tiktok", "facebook", "instagram"];
 
 export type PublicationStatus = "needs_review" | "scheduled" | "publishing" | "published" | "failed" | "canceled";
 
@@ -128,6 +128,7 @@ export type Settings = {
         reviewDemo: boolean;
       };
       facebook: { enabled: boolean };
+      instagram: { enabled: boolean };
     };
   };
 };
@@ -159,6 +160,7 @@ export const DEFAULT_SETTINGS: Settings = {
       youtube: { enabled: false, privacy: "private" },
       tiktok: { enabled: false, privacy: "SELF_ONLY", reviewDemo: false },
       facebook: { enabled: false },
+      instagram: { enabled: false },
     },
   },
 };

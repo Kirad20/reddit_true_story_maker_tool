@@ -1,4 +1,4 @@
-import type { Platform } from "../domain";
+import type { Platform, TikTokPostOptions, TikTokPrivacy } from "../domain";
 
 export type PublishInput = {
   filePath: string;
@@ -13,20 +13,34 @@ export type PublishResult = { remoteId: string; url: string | null };
 
 export type AccountStatus = {
   platform: Platform;
-  /** App credentials present in Settings → Credenciales. */
+  /** Zernio API key present (Ajustes → Credenciales). */
   configured: boolean;
   connected: boolean;
   accountName: string | null;
-  /** App user who connected it. */
-  linkedBy: string | null;
   note: string | null;
+};
+
+export type TikTokSettings = {
+  privacy: TikTokPrivacy;
+  /** Choices made by the creator in the Direct Post screen (review flow). */
+  post?: TikTokPostOptions | null;
+};
+
+/** What TikTok reports for the creator, as the Direct Post screen needs it. */
+export type TikTokCreatorInfo = {
+  nickname: string;
+  username: string | null;
+  avatarUrl: string | null;
+  privacyOptions: TikTokPrivacy[];
+  commentDisabled: boolean;
+  duetDisabled: boolean;
+  stitchDisabled: boolean;
+  maxVideoPostDurationSec: number | null;
 };
 
 export interface Publisher {
   platform: Platform;
   status(): AccountStatus;
-  /** Called after the user connected the account through Better Auth (Ajustes → Conectar). */
-  onLinked(link: { userId: string; accountId: string; linkedBy: string | null }): Promise<void>;
   disconnect(): Promise<void>;
   publish(input: PublishInput, settings: unknown): Promise<PublishResult>;
 }
