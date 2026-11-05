@@ -23,7 +23,13 @@ export type Draft = {
   status: DraftStatus;
   createdAt: string;
   content: GeneratedContent;
+  published?: { platform: Platform; at: string; url: string | null }[];
 };
+
+/** Platforms that accept a post without a photo or video. */
+export const TEXT_ONLY_PLATFORMS: Platform[] = ["facebook"];
+
+export const postText = (v: PostVariant) => [v.text, v.hashtags.map((h) => `#${h}`).join(" ")].filter(Boolean).join("\n\n");
 
 export const POST_LIMIT: Record<Platform, number> = { tiktok: 150, youtube: 5000, facebook: 2200, instagram: 2200 };
 

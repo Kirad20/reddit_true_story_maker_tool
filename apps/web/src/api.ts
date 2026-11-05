@@ -415,6 +415,7 @@ export type StudioDraft = {
   status: "draft" | "approved" | "archived";
   createdAt: string;
   content: StudioContent;
+  published?: { platform: Platform; at: string; url: string | null }[];
 };
 export type StudioStats = { posts: number; views: number; likes: number; comments: number; shares: number; saves: number; clicks: number; engagementRate: number };
 export type StudioAnalytics = {
@@ -440,6 +441,8 @@ export const studioApi = {
   setStatus: (id: string, status: StudioDraft["status"]) =>
     request<StudioDraft>(`/api/studio/drafts/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
   remove: (id: string) => request<void>(`/api/studio/drafts/${id}`, { method: "DELETE" }),
+  publish: (id: string, platform: Platform) =>
+    request<StudioDraft>(`/api/studio/drafts/${id}/publish`, { method: "POST", body: JSON.stringify({ platform }) }),
   analytics: (insights = false) => request<StudioAnalytics>(`/api/studio/analytics${insights ? "?insights=1" : ""}`),
   config: () => request<StudioConfig>("/api/studio/config"),
   saveConfig: (patch: { brand?: Partial<StudioConfig["brand"]>; automation?: Partial<StudioConfig["automation"]> }) =>

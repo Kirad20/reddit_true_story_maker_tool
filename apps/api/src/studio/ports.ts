@@ -26,6 +26,11 @@ export interface MetricsProvider {
   fetch(): Promise<PostMetric[]>;
 }
 
+/** Posts text-only content to a connected social account. */
+export interface SocialPublisher {
+  publishText(platform: Platform, text: string): Promise<{ url: string | null }>;
+}
+
 /** Publications made through this app, used when remote metrics are unavailable. */
 export interface LocalPublicationReader {
   published(): { postId: string; platform: Platform; title: string; publishedAt: string }[];

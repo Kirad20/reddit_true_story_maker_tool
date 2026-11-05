@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { z, ZodError } from "zod";
-import { PLATFORMS } from "../../domain";
+import { PLATFORMS, type Platform } from "../../domain";
 import type { StudioService } from "../application";
 
 const platform = z.enum(PLATFORMS as [string, ...string[]]);
@@ -34,6 +34,11 @@ export function studioRouter(service: StudioService, controls?: StudioControls):
   }));
 
   router.get("/drafts", handle(async (_req, res) => void res.json(await service.list())));
+
+  router.post("/drafts/:id/publish", handle(async (req, res) => {
+    const { platform } = z.object({ platform: z.enum(PLATFORMS as [Platform, ...Platform[]]) }).parse(req.body);
+    res.json(await service.publish(String(req.params.id), platform));
+  }));
 
   router.patch("/drafts/:id", handle(async (req, res) => {
     res.json(await service.setStatus(String(req.params.id), statusInput.parse(req.body).status));

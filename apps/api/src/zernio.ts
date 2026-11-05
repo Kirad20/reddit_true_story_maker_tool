@@ -178,3 +178,18 @@ export async function publishVideo(
   }
   return { remoteId: String(target?.platformPostId ?? body?.post?._id ?? ""), url: target?.platformPostUrl ?? null };
 }
+
+/** Posts text-only content right away (platforms that allow it, e.g. Facebook). */
+export async function publishText(platform: Platform, content: string): Promise<{ url: string | null }> {
+  const account = await requireAccount(platform);
+  const result = await zernio().posts.createPost({
+    body: { content, platforms: [{ platform, accountId: account._id }], publishNow: true },
+  } as never);
+  const body = (result.data ?? result.error) as { post?: any } | undefined;
+  const target = body?.post?.platforms?.find((p: { platform: string }) => p.platform === platform);
+  if (!target) unwrap(result as never, "createPost");
+  if (target?.status === "failed" || target?.error) {
+    throw new PublishError(`Zernio ${platform}: ${target.errorMessage ?? target.error ?? "publish failed"}`, false);
+  }
+  return { url: target?.platformPostUrl ?? null };
+}

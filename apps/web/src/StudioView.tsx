@@ -22,7 +22,7 @@ const ALL: Platform[] = ["tiktok", "instagram", "youtube", "facebook"];
 const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
 const copy = (text: string) => navigator.clipboard.writeText(text).then(() => toast("Copiado"), () => toast("No se pudo copiar", "error"));
 
-function DraftBody({ draft, onVideo }: { draft: StudioDraft; onVideo: (d: StudioDraft) => void }) {
+function DraftBody({ draft, onVideo, onPublish }: { draft: StudioDraft; onVideo: (d: StudioDraft) => void; onPublish: (d: StudioDraft, p: Platform) => void }) {
   const c = draft.content;
   switch (c.kind) {
     case "post":
@@ -30,11 +30,16 @@ function DraftBody({ draft, onVideo }: { draft: StudioDraft; onVideo: (d: Studio
         <div className="studio-list">
           {c.variants.map((v, i) => {
             const text = `${v.text}\n\n${v.hashtags.map((h) => `#${h}`).join(" ")}`.trim();
+            const published = draft.published?.find((p) => p.platform === v.platform);
             return (
               <div key={i} className="studio-item">
                 <strong>{PLATFORM_LABEL[v.platform]}</strong>
                 <p style={{ whiteSpace: "pre-wrap" }}>{text}</p>
                 <button className="ghost" onClick={() => copy(text)}>Copiar</button>
+                {v.platform === "facebook" && draft.status === "approved" && !published && (
+                  <button className="primary" onClick={() => onPublish(draft, v.platform)}>Publicar en Facebook</button>
+                )}
+                {published && <span className="badge published">Publicado{published.url ? <> · <a href={published.url} target="_blank" rel="noreferrer">ver</a></> : null}</span>}
               </div>
             );
           })}
@@ -158,7 +163,7 @@ function Drafts({ drafts, refresh, onVideo }: { drafts: StudioDraft[]; refresh: 
             <time className="small muted">{new Date(d.createdAt).toLocaleString()}</time>
           </div>
           <h3>{d.topic}</h3>
-          <DraftBody draft={d} onVideo={onVideo} />
+          <DraftBody draft={d} onVideo={onVideo} onPublish={(draft, p) => act(() => studioApi.publish(draft.id, p).then(() => toast("Publicado")))} />
           <div className="actions">
             {d.status !== "approved" && <button className="ghost" onClick={() => act(() => studioApi.setStatus(d.id, "approved"))}>Aprobar</button>}
             {d.status !== "archived" && <button className="ghost" onClick={() => act(() => studioApi.setStatus(d.id, "archived"))}>Archivar</button>}

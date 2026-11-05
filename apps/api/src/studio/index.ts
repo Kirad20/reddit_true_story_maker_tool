@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { agentReady } from "../aiconfig";
 import { PLATFORMS, publications, type Platform } from "../domain";
+import { publishText } from "../zernio";
 import { structured } from "../llm";
 import { Collection, Doc, newId } from "../store";
 import { LlmContentGenerator } from "./adapters/llmGenerator";
@@ -49,6 +50,7 @@ export const studio = new StudioService({
         .filter((p) => Boolean(p.status === "published" && p.publishedAt))
         .map((p) => ({ postId: p.id, platform: p.platform, title: p.title, publishedAt: p.publishedAt! })),
   },
+  publisher: { publishText },
   brand: () => config.get().brand,
   newId: () => newId("sd"),
   now: () => new Date(),

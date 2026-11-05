@@ -1,7 +1,9 @@
 import type { Platform } from "../domain";
 import {
   normalizePost,
+  postText,
   summarizeMetrics,
+  TEXT_ONLY_PLATFORMS,
   type Brand,
   type ContentKind,
   type Draft,
@@ -11,13 +13,14 @@ import {
   type PlanContent,
   type PostMetric,
 } from "./domain";
-import type { ContentGenerator, DraftRepository, LocalPublicationReader, MetricsProvider } from "./ports";
+import type { ContentGenerator, DraftRepository, LocalPublicationReader, MetricsProvider, SocialPublisher } from "./ports";
 
 export type StudioDeps = {
   generator: ContentGenerator;
   drafts: DraftRepository;
   metrics: MetricsProvider | null;
   local: LocalPublicationReader;
+  publisher?: SocialPublisher;
   brand: () => Brand;
   newId: () => string;
   now: () => Date;
@@ -76,6 +79,21 @@ export class StudioService {
 
   remove(id: string): Promise<void> {
     return this.d.drafts.remove(id);
+  }
+
+  /** Publishes one text variant of an approved post draft. Media platforms go through the video pipeline. */
+  async publish(id: string, platform: Platform): Promise<Draft> {
+    const draft = await this.d.drafts.get(id);
+    if (!draft) throw new Error(`Draft not found: ${id}`);
+    if (!this.d.publisher) throw new Error("No hay cuenta para publicar (conecta Zernio)");
+    if (draft.kind !== "post" || draft.content.kind !== "post") throw new Error("Solo se pueden publicar borradores de tipo publicación");
+    if (draft.status !== "approved") throw new Error("Aprueba el borrador antes de publicar");
+    if (!TEXT_ONLY_PLATFORMS.includes(platform)) throw new Error(`${platform} requiere video o imagen: usa el flujo de video`);
+    if (draft.published?.some((p) => p.platform === platform)) throw new Error(`Este borrador ya se publicó en ${platform}`);
+    const variant = draft.content.variants.find((v) => v.platform === platform);
+    if (!variant) throw new Error(`El borrador no tiene variante para ${platform}`);
+    const { url } = await this.d.publisher.publishText(platform, postText(variant));
+    return this.d.drafts.save({ ...draft, published: [...(draft.published ?? []), { platform, at: this.d.now().toISOString(), url }] });
   }
 
   async analytics(opts: { withInsights?: boolean } = {}): Promise<AnalyticsReport> {
