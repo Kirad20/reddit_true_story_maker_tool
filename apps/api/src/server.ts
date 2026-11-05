@@ -73,7 +73,7 @@ import { listVoices, previewVoice } from "./tts";
 import type { SessionUser } from "./auth";
 import { getLlmCall, jobTrace, loadTelemetry, recordAudit, telemetryEvents, telemetrySummary, withTrace } from "./telemetry";
 import { AGENT_FLOW } from "./architecture";
-import { startStudio, studioRoutes } from "./studio";
+import { imageStore, startStudio, studioRoutes } from "./studio";
 
 const assets = assetStore();
 reportOrExit([
@@ -128,6 +128,7 @@ app.get("/api/me", (_req, res) => {
 
 // Media for the preview player and the renderer (supports range requests).
 app.use("/media/jobs", express.static(JOBS_DIR, { index: false }));
+app.use("/media/studio", express.static(imageStore.dir, { index: false }));
 // Backgrounds and music: local assets/ folder or the S3 bucket (proxied, so the bucket can stay private).
 app.use("/media/assets", assets.handler());
 

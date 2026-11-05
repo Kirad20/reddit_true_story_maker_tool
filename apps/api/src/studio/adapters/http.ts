@@ -9,6 +9,7 @@ const generateInput = z.object({
   topic: z.string().trim().min(1).max(500),
   platforms: z.array(platform).max(4).optional(),
   days: z.number().int().min(1).max(14).optional(),
+  formats: z.record(platform, z.string().max(20)).optional(),
 });
 const statusInput = z.object({ status: z.enum(["draft", "approved", "archived"]) });
 
@@ -38,6 +39,11 @@ export function studioRouter(service: StudioService, controls?: StudioControls):
   router.post("/drafts/:id/publish", handle(async (req, res) => {
     const { platform } = z.object({ platform: z.enum(PLATFORMS as [Platform, ...Platform[]]) }).parse(req.body);
     res.json(await service.publish(String(req.params.id), platform));
+  }));
+
+  router.post("/drafts/:id/illustrate", handle(async (req, res) => {
+    const { platform } = z.object({ platform: z.enum(PLATFORMS as [Platform, ...Platform[]]) }).parse(req.body);
+    res.json(await service.illustrate(String(req.params.id), platform));
   }));
 
   router.patch("/drafts/:id", handle(async (req, res) => {

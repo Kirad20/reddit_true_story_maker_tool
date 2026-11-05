@@ -1,5 +1,8 @@
 import type { Platform } from "../domain";
 import {
+  FORMATS_BY_PLATFORM,
+  IMAGE_PLATFORMS,
+  imageAspect,
   normalizePost,
   postText,
   summarizeMetrics,
@@ -11,9 +14,10 @@ import {
   type GeneratedContent,
   type MetricsSummary,
   type PlanContent,
+  type PostFormat,
   type PostMetric,
 } from "./domain";
-import type { ContentGenerator, DraftRepository, LocalPublicationReader, MetricsProvider, SocialPublisher } from "./ports";
+import type { ContentGenerator, DraftRepository, LocalPublicationReader, ImageGenerator, ImageStore, MetricsProvider, SocialPublisher } from "./ports";
 
 export type StudioDeps = {
   generator: ContentGenerator;
@@ -21,12 +25,14 @@ export type StudioDeps = {
   metrics: MetricsProvider | null;
   local: LocalPublicationReader;
   publisher?: SocialPublisher;
+  images?: ImageGenerator;
+  imageStore?: ImageStore;
   brand: () => Brand;
   newId: () => string;
   now: () => Date;
 };
 
-export type GenerateInput = { kind: ContentKind; topic: string; platforms?: Platform[]; days?: number };
+export type GenerateInput = { kind: ContentKind; topic: string; platforms?: Platform[]; days?: number; formats?: Partial<Record<Platform, PostFormat>> };
 
 export type AnalyticsReport = { source: "remote" | "local"; summary: MetricsSummary; insights?: string[] };
 
@@ -45,7 +51,10 @@ export class StudioService {
     let content: GeneratedContent;
     switch (input.kind) {
       case "post": {
-        const post = await this.d.generator.post({ ...base, platforms });
+        for (const [p, f] of Object.entries(input.formats ?? {}) as [Platform, PostFormat][]) {
+          if (!FORMATS_BY_PLATFORM[p]?.includes(f)) throw new Error(`Formato no soportado en ${p}: ${f}`);
+        }
+        const post = await this.d.generator.post({ ...base, platforms, formats: input.formats });
         content = { kind: "post", variants: post.variants.map(normalizePost) };
         break;
       }
@@ -88,12 +97,34 @@ export class StudioService {
     if (!this.d.publisher) throw new Error("No hay cuenta para publicar (conecta Zernio)");
     if (draft.kind !== "post" || draft.content.kind !== "post") throw new Error("Solo se pueden publicar borradores de tipo publicación");
     if (draft.status !== "approved") throw new Error("Aprueba el borrador antes de publicar");
-    if (!TEXT_ONLY_PLATFORMS.includes(platform)) throw new Error(`${platform} requiere video o imagen: usa el flujo de video`);
+    if (!IMAGE_PLATFORMS.includes(platform)) throw new Error(`${platform} requiere video: usa el flujo de video`);
     if (draft.published?.some((p) => p.platform === platform)) throw new Error(`Este borrador ya se publicó en ${platform}`);
     const variant = draft.content.variants.find((v) => v.platform === platform);
     if (!variant) throw new Error(`El borrador no tiene variante para ${platform}`);
-    const { url } = await this.d.publisher.publishText(platform, postText(variant));
+    if (!TEXT_ONLY_PLATFORMS.includes(platform) && !variant.imageUrl) throw new Error(`Genera una imagen antes de publicar en ${platform}`);
+    const { url } = await this.d.publisher.publishPost(platform, postText(variant), variant.imageUrl ?? null);
     return this.d.drafts.save({ ...draft, published: [...(draft.published ?? []), { platform, at: this.d.now().toISOString(), url }] });
+  }
+
+  /** Generates the illustration of one variant (from its image prompt, or topic + copy) and attaches it. */
+  async illustrate(id: string, platform: Platform): Promise<Draft> {
+    const draft = await this.d.drafts.get(id);
+    if (!draft) throw new Error(`Draft not found: ${id}`);
+    if (!this.d.images || !this.d.imageStore) throw new Error("La generación de imágenes no está configurada (Ajustes → Modelos de IA → Imágenes)");
+    if (draft.content.kind !== "post") throw new Error("Solo las publicaciones llevan imagen");
+    const content = draft.content;
+    const index = content.variants.findIndex((v) => v.platform === platform);
+    if (index < 0) throw new Error(`El borrador no tiene variante para ${platform}`);
+    const variant = content.variants[index];
+    const brand = this.d.brand();
+    const prompt = [
+      variant.imagePrompt || `${draft.topic}. ${variant.text.slice(0, 200)}`,
+      `Brand: ${brand.name}${brand.niche ? `, ${brand.niche}` : ""}. Clean social media visual, no text or watermarks, no real people's faces.`,
+    ].join("\n");
+    const png = await this.d.images.generate(prompt, imageAspect(platform, variant.format ?? "image"));
+    const { url } = await this.d.imageStore.save(png);
+    const variants = content.variants.map((v, i) => (i === index ? { ...v, imageUrl: url } : v));
+    return this.d.drafts.save({ ...draft, content: { ...content, variants } });
   }
 
   async analytics(opts: { withInsights?: boolean } = {}): Promise<AnalyticsReport> {

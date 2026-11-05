@@ -17,6 +17,7 @@ const AGENT_LABEL: Record<string, string> = {
   script: "Guion",
   voice: "Director de voz",
   studio: "Estudio social",
+  image: "Imágenes",
   metadata: "Publicación",
 };
 

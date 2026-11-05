@@ -4,7 +4,36 @@ import type { Platform } from "../domain";
 
 export type Brand = { name: string; niche: string; voice: string; audience: string; language: "en" | "es" };
 
-export type PostVariant = { platform: Platform; text: string; hashtags: string[] };
+export type PostFormat = "text" | "image" | "carousel" | "story" | "reel" | "short" | "poll" | "community";
+export type ImageAspect = "square" | "portrait" | "landscape";
+
+/** What each network supports; the first entry is the default. */
+export const FORMATS_BY_PLATFORM: Record<Platform, PostFormat[]> = {
+  tiktok: ["short", "carousel"],
+  instagram: ["image", "carousel", "reel", "story"],
+  facebook: ["text", "image", "poll"],
+  youtube: ["short", "community"],
+};
+export const defaultFormat = (p: Platform): PostFormat => FORMATS_BY_PLATFORM[p][0];
+
+export function imageAspect(_platform: Platform, format: PostFormat): ImageAspect {
+  if (format === "story" || format === "reel" || format === "short") return "portrait";
+  if (format === "community") return "landscape";
+  return "square";
+}
+
+export type PostVariant = {
+  platform: Platform;
+  format?: PostFormat;
+  text: string;
+  hashtags: string[];
+  /** Carousel: one line of copy per slide. */
+  slides?: string[];
+  /** What the illustration should show. */
+  imagePrompt?: string;
+  /** Generated illustration, served under /media/studio. */
+  imageUrl?: string;
+};
 export type PostContent = { kind: "post"; variants: PostVariant[] };
 export type AdVariant = { headline: string; primaryText: string; cta: string };
 export type AdsContent = { kind: "ads"; objective: string; audience: string; variants: AdVariant[] };
@@ -28,6 +57,8 @@ export type Draft = {
 
 /** Platforms that accept a post without a photo or video. */
 export const TEXT_ONLY_PLATFORMS: Platform[] = ["facebook"];
+/** Platforms where this app can publish a single image post. */
+export const IMAGE_PLATFORMS: Platform[] = ["facebook", "instagram"];
 
 export const postText = (v: PostVariant) => [v.text, v.hashtags.map((h) => `#${h}`).join(" ")].filter(Boolean).join("\n\n");
 
@@ -45,7 +76,12 @@ export function normalizePost(v: PostVariant): PostVariant {
   }
   const limit = POST_LIMIT[v.platform];
   const text = v.text.length > limit ? `${v.text.slice(0, limit - 1).trimEnd()}…` : v.text;
-  return { platform: v.platform, text, hashtags };
+  const format = v.format && FORMATS_BY_PLATFORM[v.platform].includes(v.format) ? v.format : defaultFormat(v.platform);
+  const out: PostVariant = { platform: v.platform, format, text, hashtags };
+  if (format === "carousel" && v.slides?.length) out.slides = v.slides.slice(0, 10);
+  if (v.imagePrompt) out.imagePrompt = v.imagePrompt;
+  if (v.imageUrl) out.imageUrl = v.imageUrl;
+  return out;
 }
 
 // ---------------------------------------------------------------- analytics

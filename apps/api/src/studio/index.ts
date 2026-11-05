@@ -1,9 +1,13 @@
 import { z } from "zod";
-import { agentReady } from "../aiconfig";
+import { agentReady, resolveAgent } from "../aiconfig";
 import { PLATFORMS, publications, type Platform } from "../domain";
-import { publishText } from "../zernio";
-import { structured } from "../llm";
+import { publishPost } from "../zernio";
+import { openaiClient, structured } from "../llm";
 import { Collection, Doc, newId } from "../store";
+import { DATA_DIR } from "../config";
+import path from "node:path";
+import { FileImageStore } from "./adapters/imageStore";
+import { OpenAIImageGenerator } from "./adapters/openaiImages";
 import { LlmContentGenerator } from "./adapters/llmGenerator";
 import { studioRouter } from "./adapters/http";
 import { zernioMetricsOrNull } from "./adapters/zernioMetrics";
@@ -30,6 +34,7 @@ const configPatch = z.object({
 });
 
 const drafts = new Collection<Draft>("studio-drafts");
+export const imageStore = new FileImageStore(path.join(DATA_DIR, "studio-images"));
 const config = new Doc<StudioConfig>("studio", DEFAULT_STUDIO_CONFIG);
 
 const repo: DraftRepository = {
@@ -50,7 +55,12 @@ export const studio = new StudioService({
         .filter((p) => Boolean(p.status === "published" && p.publishedAt))
         .map((p) => ({ postId: p.id, platform: p.platform, title: p.title, publishedAt: p.publishedAt! })),
   },
-  publisher: { publishText },
+  publisher: { publishPost: (platform, text, media) => publishPost(platform, text, media ? imageStore.pathOf(media) : null) },
+  images: new OpenAIImageGenerator(() => {
+    const r = resolveAgent("image");
+    return r && r.provider.kind === "openai" ? { client: openaiClient(r.provider, r.apiKey), model: r.model } : null;
+  }),
+  imageStore,
   brand: () => config.get().brand,
   newId: () => newId("sd"),
   now: () => new Date(),

@@ -11,7 +11,12 @@ const obj = (properties: Record<string, unknown>) => ({ type: "object", properti
 const platformEnum = { type: "string", enum: PLATFORMS };
 
 const SCHEMAS = {
-  post: obj({ variants: { type: "array", items: obj({ platform: platformEnum, text: str, hashtags: strs }) } }),
+  post: obj({
+    variants: {
+      type: "array",
+      items: obj({ platform: platformEnum, format: str, text: str, hashtags: strs, slides: strs, imagePrompt: str }),
+    },
+  }),
   ads: obj({ objective: str, audience: str, variants: { type: "array", items: obj({ headline: str, primaryText: str, cta: str }) } }),
   seo: obj({ keywords: strs, title: str, description: str, hashtags: strs }),
   video: obj({ hook: str, script: str, shots: strs, durationSec: { type: "integer" } }),
@@ -38,14 +43,29 @@ const PLATFORM_HINT: Record<Platform, string> = {
   facebook: "Facebook: conversational, 1-3 short paragraphs, a question to invite comments, 3-5 hashtags",
 };
 
+const FORMAT_HINT: Record<string, string> = {
+  text: "text-only post",
+  image: "single image post: text is the caption, imagePrompt describes the picture",
+  carousel: "carousel: slides holds 3-8 short slide texts, text is the caption, imagePrompt describes the visual style of the slides",
+  story: "story: very short punchy text, imagePrompt describes a vertical background image",
+  reel: "reel: caption for a short vertical video",
+  short: "short vertical video: caption/description",
+  poll: "poll: text holds the question, slides holds 2-4 answer options",
+  community: "community post: text-only update with an optional imagePrompt",
+};
+
 export class LlmContentGenerator implements ContentGenerator {
   constructor(private structured: Structured) {}
 
-  async post({ topic, brand, platforms }: GenRequest & { platforms: Platform[] }): Promise<PostContent> {
+  async post({ topic, brand, platforms, formats }: GenRequest & { platforms: Platform[]; formats?: Partial<Record<Platform, string>> }): Promise<PostContent> {
+    const lines = platforms.map((p) => {
+      const f = formats?.[p];
+      return `- ${p}: ${PLATFORM_HINT[p]}${f ? `; format "${f}" (${FORMAT_HINT[f] ?? f})` : ""}`;
+    });
     const r = await this.structured<{ variants: PostContent["variants"] }>({
       agent: "studio",
       system: systemFor(brand, "social media copywriter"),
-      prompt: `Write one post per platform about: ${topic}\n\nPlatforms:\n${platforms.map((p) => `- ${p}: ${PLATFORM_HINT[p]}`).join("\n")}\n\nHashtags go in the hashtags field without '#', not inside text.`,
+      prompt: `Write one post per platform about: ${topic}\n\nPlatforms:\n${lines.join("\n")}\n\nSet format to the requested one (or the best fit). Leave slides empty unless the format needs them and imagePrompt empty if no image is needed. imagePrompt must be an English visual description with no text or logos in the picture. Hashtags go in the hashtags field without '#', not inside text.`,
       schema: SCHEMAS.post,
     });
     return { kind: "post", variants: r.variants.filter((v) => platforms.includes(v.platform)) };

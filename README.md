@@ -15,7 +15,12 @@ configura en Ajustes → Modelos de IA): genera publicaciones por red, guiones d
 video), anuncios, paquetes SEO y calendarios; muestra estadísticas reales vía Zernio (con respaldo local) y
 recomendaciones de IA; y un agente automático planea la semana y deja borradores para aprobar (nunca publica solo).
 Código en `apps/api/src/studio` con arquitectura hexagonal: `domain.ts` (puro), `application.ts` (casos de uso),
-`ports.ts` y `adapters/` (LLM, Zernio, HTTP); `index.ts` es la raíz de composición. Probado con TDD (`test/studio.*`).
+`ports.ts` y `adapters/` (LLM, Zernio, imágenes, HTTP); `index.ts` es la raíz de composición. Probado con TDD (`test/studio.*`).
+
+Los posts tienen **formato por red** (TikTok: short/carrusel; Instagram: imagen/carrusel/reel/historia; Facebook:
+texto/imagen/encuesta; YouTube: short/comunidad). Las imágenes se generan con el agente «Imágenes» (necesita un
+proveedor OpenAI-compatible, p. ej. `gpt-image-1`), se guardan en `DATA_DIR/studio-images` y se publican en Facebook
+e Instagram (Instagram exige imagen) vía Zernio.
 
 ## Requisitos
 

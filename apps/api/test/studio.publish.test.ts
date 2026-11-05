@@ -37,30 +37,30 @@ function build(publisher?: SocialPublisher, draft?: Partial<Draft>) {
 
 describe("StudioService.publish", () => {
   it("publishes an approved text variant and records it on the draft", async () => {
-    const publisher = { publishText: vi.fn(async () => ({ url: "https://fb/1" })) };
+    const publisher = { publishPost: vi.fn(async () => ({ url: "https://fb/1" })) };
     const { service, store } = build(publisher);
     const d = await service.publish("d1", "facebook");
-    expect(publisher.publishText).toHaveBeenCalledWith("facebook", "Hola\n\n#a #b");
+    expect(publisher.publishPost).toHaveBeenCalledWith("facebook", "Hola\n\n#a #b", null);
     expect(d.published).toEqual([{ platform: "facebook", at: "2026-01-05T00:00:00.000Z", url: "https://fb/1" }]);
     expect(store.get("d1")?.published).toHaveLength(1);
   });
 
   it("refuses drafts that are not approved", async () => {
-    const { service } = build({ publishText: vi.fn() }, { status: "draft" });
+    const { service } = build({ publishPost: vi.fn() }, { status: "draft" });
     await expect(service.publish("d1", "facebook")).rejects.toThrow(/aprueba/i);
   });
 
   it("refuses platforms that need media", async () => {
-    const publisher = { publishText: vi.fn() };
+    const publisher = { publishPost: vi.fn() };
     const { service } = build(publisher);
     await expect(service.publish("d1", "tiktok")).rejects.toThrow(/video|media/i);
-    expect(publisher.publishText).not.toHaveBeenCalled();
+    expect(publisher.publishPost).not.toHaveBeenCalled();
   });
 
   it("refuses non-post drafts, missing variants, double publishing and a missing publisher", async () => {
-    await expect(build({ publishText: vi.fn() }, { kind: "seo", content: { kind: "seo", keywords: [], title: "", description: "", hashtags: [] } }).service.publish("d1", "facebook")).rejects.toThrow(/publicaci/i);
-    await expect(build({ publishText: vi.fn() }, { content: { kind: "post", variants: [] } }).service.publish("d1", "facebook")).rejects.toThrow(/variante/i);
-    await expect(build({ publishText: vi.fn() }, { published: [{ platform: "facebook", at: "x", url: null }] }).service.publish("d1", "facebook")).rejects.toThrow(/ya/i);
+    await expect(build({ publishPost: vi.fn() }, { kind: "seo", content: { kind: "seo", keywords: [], title: "", description: "", hashtags: [] } }).service.publish("d1", "facebook")).rejects.toThrow(/publicaci/i);
+    await expect(build({ publishPost: vi.fn() }, { content: { kind: "post", variants: [] } }).service.publish("d1", "facebook")).rejects.toThrow(/variante/i);
+    await expect(build({ publishPost: vi.fn() }, { published: [{ platform: "facebook", at: "x", url: null }] }).service.publish("d1", "facebook")).rejects.toThrow(/ya/i);
     await expect(build(undefined).service.publish("d1", "facebook")).rejects.toThrow(/publicar/i);
   });
 });

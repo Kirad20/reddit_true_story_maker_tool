@@ -222,7 +222,7 @@ type PubEdit = Partial<Pick<Publication, "title" | "description" | "tags">>;
 
 export type ProviderKind = "anthropic" | "openai";
 export type ModelProvider = { id: string; name: string; kind: ProviderKind; baseUrl: string | null };
-export type AgentId = "writer" | "curator" | "splitter" | "script" | "voice" | "metadata" | "studio";
+export type AgentId = "writer" | "curator" | "splitter" | "script" | "voice" | "metadata" | "studio" | "image";
 export type Effort = "low" | "medium" | "high";
 export type AgentModel = { providerId: string; model: string; effort: Effort };
 export type AIConfigView = {
@@ -402,8 +402,34 @@ export const observabilityApi = {
 // ---------------------------------------------------------------- Estudio social
 
 export type StudioKind = "post" | "ads" | "seo" | "video" | "plan";
+export type PostFormat = "text" | "image" | "carousel" | "story" | "reel" | "short" | "poll" | "community";
+export const FORMATS_BY_PLATFORM: Record<Platform, PostFormat[]> = {
+  tiktok: ["short", "carousel"],
+  instagram: ["image", "carousel", "reel", "story"],
+  facebook: ["text", "image", "poll"],
+  youtube: ["short", "community"],
+};
+export const FORMAT_LABEL: Record<PostFormat, string> = {
+  text: "Texto",
+  image: "Imagen",
+  carousel: "Carrusel",
+  story: "Historia",
+  reel: "Reel",
+  short: "Short / video corto",
+  poll: "Encuesta",
+  community: "Comunidad",
+};
+export type StudioVariant = {
+  platform: Platform;
+  text: string;
+  hashtags: string[];
+  format?: PostFormat;
+  slides?: string[];
+  imagePrompt?: string;
+  imageUrl?: string;
+};
 export type StudioContent =
-  | { kind: "post"; variants: { platform: Platform; text: string; hashtags: string[] }[] }
+  | { kind: "post"; variants: StudioVariant[] }
   | { kind: "ads"; objective: string; audience: string; variants: { headline: string; primaryText: string; cta: string }[] }
   | { kind: "seo"; keywords: string[]; title: string; description: string; hashtags: string[] }
   | { kind: "video"; hook: string; script: string; shots: string[]; durationSec: number }
@@ -435,8 +461,10 @@ export type StudioConfig = {
 };
 
 export const studioApi = {
-  generate: (input: { kind: StudioKind; topic: string; platforms?: Platform[] }) =>
+  generate: (input: { kind: StudioKind; topic: string; platforms?: Platform[]; formats?: Partial<Record<Platform, PostFormat>> }) =>
     request<StudioDraft>("/api/studio/generate", { method: "POST", body: JSON.stringify(input) }),
+  illustrate: (id: string, platform: Platform) =>
+    request<StudioDraft>(`/api/studio/drafts/${id}/illustrate`, { method: "POST", body: JSON.stringify({ platform }) }),
   drafts: () => request<StudioDraft[]>("/api/studio/drafts"),
   setStatus: (id: string, status: StudioDraft["status"]) =>
     request<StudioDraft>(`/api/studio/drafts/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),

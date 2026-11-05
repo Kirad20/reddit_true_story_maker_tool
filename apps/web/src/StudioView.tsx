@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  FORMATS_BY_PLATFORM,
+  FORMAT_LABEL,
   PLATFORM_LABEL,
   pipelineApi,
   studioApi,
   type Platform,
+  type PostFormat,
   type StudioAnalytics,
   type StudioConfig,
   type StudioDraft,
@@ -22,7 +25,17 @@ const ALL: Platform[] = ["tiktok", "instagram", "youtube", "facebook"];
 const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
 const copy = (text: string) => navigator.clipboard.writeText(text).then(() => toast("Copiado"), () => toast("No se pudo copiar", "error"));
 
-function DraftBody({ draft, onVideo, onPublish }: { draft: StudioDraft; onVideo: (d: StudioDraft) => void; onPublish: (d: StudioDraft, p: Platform) => void }) {
+function DraftBody({
+  draft,
+  onVideo,
+  onPublish,
+  onIllustrate,
+}: {
+  draft: StudioDraft;
+  onVideo: (d: StudioDraft) => void;
+  onPublish: (d: StudioDraft, p: Platform) => void;
+  onIllustrate: (d: StudioDraft, p: Platform) => void;
+}) {
   const c = draft.content;
   switch (c.kind) {
     case "post":
@@ -31,14 +44,20 @@ function DraftBody({ draft, onVideo, onPublish }: { draft: StudioDraft; onVideo:
           {c.variants.map((v, i) => {
             const text = `${v.text}\n\n${v.hashtags.map((h) => `#${h}`).join(" ")}`.trim();
             const published = draft.published?.find((p) => p.platform === v.platform);
+            const canImage = (v.platform === "facebook" || v.platform === "instagram") && Boolean(v.imagePrompt);
+            const canPublish = (v.platform === "facebook" || (v.platform === "instagram" && v.imageUrl)) && draft.status === "approved" && !published;
             return (
               <div key={i} className="studio-item">
                 <strong>{PLATFORM_LABEL[v.platform]}</strong>
+                {v.format && <span className="badge">{FORMAT_LABEL[v.format]}</span>}
+                {v.imageUrl && <img className="studio-image" src={v.imageUrl} alt={v.imagePrompt ?? ""} />}
                 <p style={{ whiteSpace: "pre-wrap" }}>{text}</p>
-                <button className="ghost" onClick={() => copy(text)}>Copiar</button>
-                {v.platform === "facebook" && draft.status === "approved" && !published && (
-                  <button className="primary" onClick={() => onPublish(draft, v.platform)}>Publicar en Facebook</button>
+                {v.slides && v.slides.length > 0 && (
+                  <ol className="small muted">{v.slides.map((s, n) => <li key={n}>{s}</li>)}</ol>
                 )}
+                <button className="ghost" onClick={() => copy(text)}>Copiar</button>
+                {canImage && <button className="ghost" onClick={() => onIllustrate(draft, v.platform)}>{v.imageUrl ? "Regenerar imagen" : "Generar imagen"}</button>}
+                {canPublish && <button className="primary" onClick={() => onPublish(draft, v.platform)}>Publicar en {PLATFORM_LABEL[v.platform]}</button>}
                 {published && <span className="badge published">Publicado{published.url ? <> · <a href={published.url} target="_blank" rel="noreferrer">ver</a></> : null}</span>}
               </div>
             );
@@ -99,12 +118,14 @@ function Generator({ onCreated, ready }: { onCreated: (d: StudioDraft) => void; 
   const [kind, setKind] = useState<StudioKind>("post");
   const [topic, setTopic] = useState("");
   const [platforms, setPlatforms] = useState<Platform[]>(ALL);
+  const [formats, setFormats] = useState<Partial<Record<Platform, PostFormat>>>({});
   const [busy, setBusy] = useState(false);
 
   async function go() {
     setBusy(true);
     try {
-      onCreated(await studioApi.generate({ kind, topic, platforms }));
+      const chosen = Object.fromEntries(platforms.filter((p) => formats[p]).map((p) => [p, formats[p]]));
+      onCreated(await studioApi.generate({ kind, topic, platforms, ...(kind === "post" ? { formats: chosen } : {}) }));
       toast("Contenido generado");
     } catch (e) {
       toast((e as Error).message, "error");
@@ -143,6 +164,19 @@ function Generator({ onCreated, ready }: { onCreated: (d: StudioDraft) => void; 
           ))}
         </div>
       )}
+      {kind === "post" && (
+        <div className="row-inline">
+          {platforms.map((p) => (
+            <label key={p}>
+              {PLATFORM_LABEL[p]}{" "}
+              <select value={formats[p] ?? ""} onChange={(e) => setFormats({ ...formats, [p]: e.target.value || undefined })}>
+                <option value="">Automático</option>
+                {FORMATS_BY_PLATFORM[p].map((f) => <option key={f} value={f}>{FORMAT_LABEL[f]}</option>)}
+              </select>
+            </label>
+          ))}
+        </div>
+      )}
       <div className="actions">
         <button className="primary" disabled={busy || !topic.trim()} onClick={go}>{busy ? "Generando…" : "Generar"}</button>
       </div>
@@ -163,7 +197,12 @@ function Drafts({ drafts, refresh, onVideo }: { drafts: StudioDraft[]; refresh: 
             <time className="small muted">{new Date(d.createdAt).toLocaleString()}</time>
           </div>
           <h3>{d.topic}</h3>
-          <DraftBody draft={d} onVideo={onVideo} onPublish={(draft, p) => act(() => studioApi.publish(draft.id, p).then(() => toast("Publicado")))} />
+          <DraftBody
+            draft={d}
+            onVideo={onVideo}
+            onPublish={(draft, p) => act(() => studioApi.publish(draft.id, p).then(() => toast("Publicado")))}
+            onIllustrate={(draft, p) => act(() => studioApi.illustrate(draft.id, p).then(() => toast("Imagen generada")))}
+          />
           <div className="actions">
             {d.status !== "approved" && <button className="ghost" onClick={() => act(() => studioApi.setStatus(d.id, "approved"))}>Aprobar</button>}
             {d.status !== "archived" && <button className="ghost" onClick={() => act(() => studioApi.setStatus(d.id, "archived"))}>Archivar</button>}
